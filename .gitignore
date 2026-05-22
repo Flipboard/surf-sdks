@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+.venv/
+
+# TypeScript
+node_modules/
+dist/
+*.js.map
+
+# Go
+*.exe
+*.test
+
+# IDE
+.idea/
+.vscode/
+*.swp
+.DS_Store
