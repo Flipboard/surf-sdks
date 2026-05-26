@@ -15,6 +15,8 @@ from .exceptions import (
 )
 
 DEFAULT_BASE_URL = "https://api.surf.social"
+# Internal path prefix — the SDK handles this automatically.
+# Users only need to set the base URL (e.g., "https://api.surf.social").
 API_PREFIX = "/flipboard/v1"
 
 
@@ -182,13 +184,13 @@ class _FeedsAPI:
 
     def get(self, surf_id: str) -> dict:
         """Get feed metadata."""
-        return self._c._get("/feed", {"surfId": surf_id})
+        return self._c._get("/feed", {"surf_id": surf_id})
 
     def get_posts(self, surf_id: str, limit: int = 20, cursor: str = None,
                   sort: str = None, services: str = None) -> dict:
         """Get posts from a feed."""
         return self._c._get("/feed/posts", {
-            "surfId": surf_id, "limit": limit, "cursor": cursor,
+            "surf_id": surf_id, "limit": limit, "cursor": cursor,
             "sort": sort, "services": services,
         })
 
@@ -207,7 +209,7 @@ class _FeedsAPI:
     def get_rss(self, surf_id: str) -> str:
         """Get RSS XML for a feed."""
         resp = self._c._request_raw("GET", "/feed/posts",
-                                     params={"surfId": surf_id, "format": "rss"})
+                                     params={"surf_id": surf_id, "format": "rss"})
         return resp.text
 
 
@@ -247,7 +249,7 @@ class _SearchAPI:
     def discover(self, type: str = "recommended", surf_id: str = None, limit: int = 20) -> dict:
         """Discover feeds. type: recommended, similar, interests."""
         return self._c._get("/search/discover", {
-            "type": type, "surfId": surf_id, "limit": limit,
+            "type": type, "surf_id": surf_id, "limit": limit,
         })
 
 
@@ -269,11 +271,11 @@ class _AIAPI:
 
     def feed_summary(self, surf_id: str, limit: int = 20) -> dict:
         """Get an AI-generated summary of a feed's recent posts."""
-        return self._c._get("/ai/feed-summary", {"surfId": surf_id, "limit": limit})
+        return self._c._get("/ai/feed-summary", {"surf_id": surf_id, "limit": limit})
 
     def thread_summary(self, post_at: str) -> dict:
         """Get an AI-generated summary of a Bluesky post thread."""
-        return self._c._get("/ai/thread-summary", {"postAT": post_at})
+        return self._c._get("/ai/thread-summary", {"post_at": post_at})
 
     def build_feed(self, prompt: str, feed_id: str = None) -> Iterator[str]:
         """Build a custom feed using AI (SSE stream).
@@ -282,7 +284,7 @@ class _AIAPI:
         """
         resp = self._c._session.post(
             self._c._url("/ai/feed-builder"),
-            json={"prompt": prompt, "feedId": feed_id},
+            json={"prompt": prompt, "feed_id": feed_id},
             stream=True,
             timeout=60,
         )
@@ -364,7 +366,7 @@ class _ContentAPI:
 
     def enrich(self, post_id: str) -> dict:
         """Get full enrichment data for a post (topics, claim_score, NSFW, etc.)."""
-        return self._c._get("/content/enrich", {"postId": post_id})
+        return self._c._get("/content/enrich", {"post_id": post_id})
 
 
 # ==========================================================================
@@ -419,7 +421,7 @@ class _AudioAPI:
 
     def create_station(self, feed_surf_id: str, title: str = None) -> dict:
         """Create a radio station from a feed (write:audio)."""
-        body = {"feedSurfId": feed_surf_id}
+        body = {"feed_surf_id": feed_surf_id}
         if title:
             body["title"] = title
         return self._c._post("/audio/radio/stations", json=body)
@@ -446,7 +448,7 @@ class _AudioAPI:
     # Transcript
     def get_transcript(self, episode_url: str) -> dict:
         """Get a signed URL for an episode transcript."""
-        return self._c._get("/audio/transcript", {"episodeUrl": episode_url})
+        return self._c._get("/audio/transcript", {"episode_url": episode_url})
 
     # Quiz
     def get_daily_quiz(self) -> dict:

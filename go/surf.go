@@ -197,7 +197,7 @@ type PostsOptions struct {
 }
 
 func (o *PostsOptions) params(surfId string) url.Values {
-	v := url.Values{"surfId": {surfId}}
+	v := url.Values{"surf_id": {surfId}}
 	if o != nil {
 		if o.Limit > 0 {
 			v.Set("limit", strconv.Itoa(o.Limit))
@@ -219,7 +219,7 @@ func (o *PostsOptions) params(surfId string) url.Values {
 type FeedsAPI struct{ c *Client }
 
 func (a *FeedsAPI) Get(surfId string) (json.RawMessage, error) {
-	return a.c.get("/feed", url.Values{"surfId": {surfId}})
+	return a.c.get("/feed", url.Values{"surf_id": {surfId}})
 }
 
 func (a *FeedsAPI) GetPosts(surfId string, opts *PostsOptions) (json.RawMessage, error) {
@@ -263,7 +263,7 @@ func (a *SearchAPI) Podcasts(q string, limit int) (json.RawMessage, error) { ret
 func (a *SearchAPI) Discover(typ, surfId string, limit int) (json.RawMessage, error) {
 	v := url.Values{"type": {typ}, "limit": {strconv.Itoa(limit)}}
 	if surfId != "" {
-		v.Set("surfId", surfId)
+		v.Set("surf_id", surfId)
 	}
 	return a.c.get("/search/discover", v)
 }
@@ -279,17 +279,17 @@ func (a *AIAPI) Ask(query string, k int) (json.RawMessage, error) {
 }
 
 func (a *AIAPI) FeedSummary(surfId string, limit int) (json.RawMessage, error) {
-	return a.c.get("/ai/feed-summary", url.Values{"surfId": {surfId}, "limit": {strconv.Itoa(limit)}})
+	return a.c.get("/ai/feed-summary", url.Values{"surf_id": {surfId}, "limit": {strconv.Itoa(limit)}})
 }
 
 func (a *AIAPI) ThreadSummary(postAT string) (json.RawMessage, error) {
-	return a.c.get("/ai/thread-summary", url.Values{"postAT": {postAT}})
+	return a.c.get("/ai/thread-summary", url.Values{"post_at": {postAT}})
 }
 
 func (a *AIAPI) BuildFeed(prompt string, feedId string) (json.RawMessage, error) {
 	body := map[string]string{"prompt": prompt}
 	if feedId != "" {
-		body["feedId"] = feedId
+		body["feed_id"] = feedId
 	}
 	return a.c.post("/ai/feed-builder", body)
 }
@@ -353,7 +353,7 @@ type AudioAPI struct{ c *Client }
 func (a *AudioAPI) ListStations() (json.RawMessage, error) { return a.c.get("/audio/radio/stations", nil) }
 func (a *AudioAPI) GetStation(id string) (json.RawMessage, error) { return a.c.get("/audio/radio/stations/"+id, nil) }
 func (a *AudioAPI) CreateStation(feedSurfId string) (json.RawMessage, error) {
-	return a.c.post("/audio/radio/stations", map[string]string{"feedSurfId": feedSurfId})
+	return a.c.post("/audio/radio/stations", map[string]string{"feed_surf_id": feedSurfId})
 }
 func (a *AudioAPI) GenerateProgram(stationId string) (json.RawMessage, error) {
 	return a.c.post("/audio/radio/stations/"+stationId+"/generate", nil)
@@ -369,7 +369,7 @@ func (a *AudioAPI) GetBriefing(id string) (json.RawMessage, error) {
 	return a.c.get("/audio/briefing/"+id, nil)
 }
 func (a *AudioAPI) GetTranscript(episodeUrl string) (json.RawMessage, error) {
-	return a.c.get("/audio/transcript", url.Values{"episodeUrl": {episodeUrl}})
+	return a.c.get("/audio/transcript", url.Values{"episode_url": {episodeUrl}})
 }
 func (a *AudioAPI) GetDailyQuiz() (json.RawMessage, error) { return a.c.get("/audio/quiz/daily", nil) }
 func (a *AudioAPI) TextToSpeech(text, voice string) ([]byte, error) {

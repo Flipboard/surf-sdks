@@ -211,9 +211,9 @@ export class SurfClient {
 class FeedsAPI {
   constructor(private c: SurfClient) {}
 
-  get(surfId: string) { return this.c._get('/feed', { surfId }); }
-  getPosts(surfId: string, opts?: { limit?: number; cursor?: string; sort?: string }) {
-    return this.c._get('/feed/posts', { surfId, ...opts });
+  get(surf_id: string) { return this.c._get('/feed', { surf_id }); }
+  getPosts(surf_id: string, opts?: { limit?: number; cursor?: string; sort?: string }) {
+    return this.c._get('/feed/posts', { surf_id, ...opts });
   }
   getPost(id: string, thread = false) {
     return this.c._get('/post', { id, thread: thread ? 'true' : undefined });
@@ -236,7 +236,7 @@ class SearchAPI {
   posts(q: string, limit = 20) { return this.search(q, 'posts', limit); }
   accounts(q: string, limit = 20) { return this.search(q, 'accounts', limit); }
   podcasts(q: string, limit = 20) { return this.search(q, 'podcasts', limit); }
-  discover(type: 'recommended' | 'similar' | 'interests' = 'recommended', opts?: { surfId?: string; limit?: number }) {
+  discover(type: 'recommended' | 'similar' | 'interests' = 'recommended', opts?: { surf_id?: string; limit?: number }) {
     return this.c._get('/search/discover', { type, ...opts });
   }
 }
@@ -251,15 +251,15 @@ class AIAPI {
   ask(query: string, opts?: { k?: number; schemaType?: string; feedId?: string }) {
     return this.c._get('/ai/ask', { query, k: opts?.k, schema_type: opts?.schemaType, feed_id: opts?.feedId });
   }
-  feedSummary(surfId: string, limit = 20) {
-    return this.c._get('/ai/feed-summary', { surfId, limit });
+  feedSummary(surf_id: string, limit = 20) {
+    return this.c._get('/ai/feed-summary', { surf_id, limit });
   }
-  threadSummary(postAT: string) {
-    return this.c._get('/ai/thread-summary', { postAT });
+  threadSummary(post_at: string) {
+    return this.c._get('/ai/thread-summary', { post_at });
   }
-  async *buildFeed(prompt: string, feedId?: string): AsyncGenerator<string> {
+  async *buildFeed(prompt: string, feed_id?: string): AsyncGenerator<string> {
     const resp = await this.c._request<Response>('POST', '/ai/feed-builder', {
-      json: { prompt, feedId },
+      json: { prompt, feed_id },
       raw: true,
     });
     const reader = resp.body?.getReader();
@@ -336,14 +336,14 @@ class AudioAPI {
 
   listStations() { return this.c._get('/audio/radio/stations'); }
   getStation(id: string) { return this.c._get(`/audio/radio/stations/${id}`); }
-  createStation(feedSurfId: string, title?: string) {
-    return this.c._post('/audio/radio/stations', { feedSurfId, title });
+  createStation(feed_surf_id: string, title?: string) {
+    return this.c._post('/audio/radio/stations', { feed_surf_id, title });
   }
   generateProgram(stationId: string) { return this.c._post(`/audio/radio/stations/${stationId}/generate`); }
   getProgram(programId: string) { return this.c._get(`/audio/radio/programs/${programId}`); }
   generateBriefing() { return this.c._post('/audio/briefing/generate'); }
   getBriefing(id?: string) { return this.c._get(id ? `/audio/briefing/${id}` : '/audio/briefing/latest'); }
-  getTranscript(episodeUrl: string) { return this.c._get('/audio/transcript', { episodeUrl }); }
+  getTranscript(episode_url: string) { return this.c._get('/audio/transcript', { episode_url }); }
   getDailyQuiz() { return this.c._get('/audio/quiz/daily'); }
   async textToSpeech(text: string, voice = 'en-US-AriaNeural'): Promise<ArrayBuffer> {
     const resp = await this.c._request<Response>('POST', '/audio/tts', { json: { text, voice }, raw: true });
