@@ -8,12 +8,22 @@
     "build": "tsc",
     "test": "echo 'Coming soon'"
   },
-  "keywords": ["surf", "api", "social", "feeds", "bluesky", "mastodon", "fediverse"],
+  "keywords": [
+    "surf",
+    "api",
+    "social",
+    "feeds",
+    "bluesky",
+    "mastodon",
+    "fediverse"
+  ],
   "author": "Flipboard <support@surf.social>",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/Flipboard/surf-sdks"
   },
-  "dependencies": {}
+  "devDependencies": {
+    "typescript": "^6.0.3"
+  }
 }
