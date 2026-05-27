@@ -323,6 +323,8 @@ func (a *AccountAPI) UpdateLink(id string, link interface{}) (json.RawMessage, e
 	return a.c.put("/account/links/"+id, link)
 }
 func (a *AccountAPI) DeleteLink(id string) error { return a.c.del("/account/links/" + id) }
+func (a *AccountAPI) Follow(accountId string) (json.RawMessage, error) { return a.c.post("/accounts/"+accountId+"/follow", nil) }
+func (a *AccountAPI) Unfollow(accountId string) (json.RawMessage, error) { return a.c.post("/accounts/"+accountId+"/unfollow", nil) }
 func (a *AccountAPI) GetConnectedApps() (json.RawMessage, error) { return a.c.get("/account/connected-apps", nil) }
 func (a *AccountAPI) RevokeConnectedApp(authorizationId int) (json.RawMessage, error) {
 	return a.c.post(fmt.Sprintf("/account/connected-apps/%d/revoke", authorizationId), nil)

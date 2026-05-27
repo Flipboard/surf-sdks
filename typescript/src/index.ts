@@ -301,6 +301,8 @@ class AccountAPI {
   addLink(link: Omit<ProfileLink, 'id'>) { return this.c._post('/account/links', link); }
   updateLink(id: string, link: Partial<ProfileLink>) { return this.c._put(`/account/links/${id}`, { id, ...link }); }
   deleteLink(id: string) { return this.c._delete(`/account/links/${id}`); }
+  follow(accountId: string) { return this.c._post(`/accounts/${accountId}/follow`); }
+  unfollow(accountId: string) { return this.c._post(`/accounts/${accountId}/unfollow`); }
   getConnectedApps() { return this.c._get('/account/connected-apps'); }
   revokeConnectedApp(authorizationId: number) { return this.c._post(`/account/connected-apps/${authorizationId}/revoke`); }
 }

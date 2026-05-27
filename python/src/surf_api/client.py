@@ -67,10 +67,12 @@ class SurfClient:
         api_key: str,
         base_url: str = DEFAULT_BASE_URL,
         timeout: int = 30,
+        max_retries: int = 3,
     ):
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
+        self.max_retries = max_retries
         self.rate_limit: Optional[RateLimitInfo] = None
 
         self._session = requests.Session()
@@ -98,12 +100,34 @@ class SurfClient:
 
     def _request(self, method: str, path: str, **kwargs) -> dict:
         kwargs.setdefault("timeout", self.timeout)
-        resp = self._session.request(method, self._url(path), **kwargs)
-        self.rate_limit = RateLimitInfo(resp.headers)
-        self._check_errors(resp)
-        if resp.status_code == 204:
-            return {}
-        return resp.json()
+        import time as _time
+        last_exc = None
+        for attempt in range(self.max_retries + 1):
+            try:
+                resp = self._session.request(method, self._url(path), **kwargs)
+                self.rate_limit = RateLimitInfo(resp.headers)
+                if resp.status_code == 429 and attempt < self.max_retries:
+                    retry_after = int(resp.headers.get("Retry-After", 2 ** attempt))
+                    _time.sleep(min(retry_after, 60))
+                    continue
+                if resp.status_code >= 500 and attempt < self.max_retries:
+                    _time.sleep(2 ** attempt)
+                    continue
+                self._check_errors(resp)
+                if resp.status_code == 204:
+                    return {}
+                return resp.json()
+            except (requests.ConnectionError, requests.Timeout) as e:
+                last_exc = e
+                if attempt < self.max_retries:
+                    _time.sleep(2 ** attempt)
+                    continue
+                raise SurfAPIError(f"Connection failed after {self.max_retries + 1} attempts: {e}",
+                                   status_code=0, error_code="connection_error")
+        # Should not reach here, but just in case
+        if last_exc:
+            raise last_exc
+        return {}
 
     def _request_raw(self, method: str, path: str, **kwargs) -> requests.Response:
         """Make a request and return the raw Response (for binary/text responses)."""
@@ -193,6 +217,38 @@ class _FeedsAPI:
             "surf_id": surf_id, "limit": limit, "cursor": cursor,
             "sort": sort, "services": services,
         })
+
+    def iter_posts(self, surf_id: str, limit: int = None, page_size: int = 40,
+                   sort: str = None, services: str = None) -> Iterator[dict]:
+        """Auto-paginate through all posts in a feed.
+
+        Yields individual post dicts. Stops when no more results or `limit` is reached.
+
+        Args:
+            surf_id: Feed ID
+            limit: Max total posts to yield (None = no limit)
+            page_size: Posts per API call (default 40)
+            sort: Sort order (recent or top)
+            services: Filter by service (mastodon, bluesky, rss)
+        """
+        cursor = None
+        fetched = 0
+        while True:
+            data = self.get_posts(surf_id, limit=page_size, cursor=cursor,
+                                  sort=sort, services=services)
+            posts = data if isinstance(data, list) else data.get("posts", data) if isinstance(data, dict) else []
+            if isinstance(posts, dict):
+                posts = list(posts.values()) if posts else []
+            if not posts:
+                break
+            for post in posts:
+                yield post
+                fetched += 1
+                if limit and fetched >= limit:
+                    return
+            cursor = data.get("cursor") if isinstance(data, dict) else None
+            if not cursor:
+                break
 
     def get_post(self, post_id: str, thread: bool = False) -> dict:
         """Get a single post by ID, optionally with thread context."""
@@ -377,6 +433,14 @@ class _AccountAPI:
     def delete_link(self, link_id: str) -> dict:
         """Delete a profile link (write:account)."""
         return self._c._delete(f"/account/links/{link_id}")
+
+    def follow(self, account_id: str) -> dict:
+        """Follow an account (write:statuses)."""
+        return self._c._post(f"/accounts/{account_id}/follow")
+
+    def unfollow(self, account_id: str) -> dict:
+        """Unfollow an account (write:statuses)."""
+        return self._c._post(f"/accounts/{account_id}/unfollow")
 
     def get_connected_apps(self) -> dict:
         """Get OAuth-authorized third-party apps (read:account)."""
