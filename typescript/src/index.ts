@@ -220,6 +220,17 @@ class FeedsAPI {
   }
   getFollowing(limit = 50) { return this.c._get('/feed/following', { limit }); }
   getSpeedDial() { return this.c._get('/feed/speeddial'); }
+
+  // Write operations (require write:statuses scope)
+  createPost(body: { status: string; visibility?: string; in_reply_to_id?: string; sensitive?: boolean; spoiler_text?: string }) {
+    return this.c._post('/statuses', body);
+  }
+  favourite(id: string) { return this.c._post(`/statuses/${id}/favourite`); }
+  unfavourite(id: string) { return this.c._post(`/statuses/${id}/unfavourite`); }
+  boost(id: string) { return this.c._post(`/statuses/${id}/reblog`); }
+  unboost(id: string) { return this.c._post(`/statuses/${id}/unreblog`); }
+  bookmark(id: string) { return this.c._post(`/statuses/${id}/bookmark`); }
+  deletePost(id: string) { return this.c._delete(`/statuses/${id}`); }
 }
 
 // ==========================================================================
@@ -290,6 +301,8 @@ class AccountAPI {
   addLink(link: Omit<ProfileLink, 'id'>) { return this.c._post('/account/links', link); }
   updateLink(id: string, link: Partial<ProfileLink>) { return this.c._put(`/account/links/${id}`, { id, ...link }); }
   deleteLink(id: string) { return this.c._delete(`/account/links/${id}`); }
+  getConnectedApps() { return this.c._get('/account/connected-apps'); }
+  revokeConnectedApp(authorizationId: number) { return this.c._post(`/account/connected-apps/${authorizationId}/revoke`); }
 }
 
 // ==========================================================================

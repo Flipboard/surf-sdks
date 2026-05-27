@@ -238,6 +238,18 @@ func (a *FeedsAPI) GetFollowing(limit int) (json.RawMessage, error) {
 	return a.c.get("/feed/following", url.Values{"limit": {strconv.Itoa(limit)}})
 }
 
+// Write operations (require write:statuses scope)
+func (a *FeedsAPI) CreatePost(status, visibility string) (json.RawMessage, error) {
+	if visibility == "" { visibility = "public" }
+	return a.c.post("/statuses", map[string]string{"status": status, "visibility": visibility})
+}
+func (a *FeedsAPI) Favourite(id string) (json.RawMessage, error) { return a.c.post("/statuses/"+id+"/favourite", nil) }
+func (a *FeedsAPI) Unfavourite(id string) (json.RawMessage, error) { return a.c.post("/statuses/"+id+"/unfavourite", nil) }
+func (a *FeedsAPI) Boost(id string) (json.RawMessage, error) { return a.c.post("/statuses/"+id+"/reblog", nil) }
+func (a *FeedsAPI) Unboost(id string) (json.RawMessage, error) { return a.c.post("/statuses/"+id+"/unreblog", nil) }
+func (a *FeedsAPI) Bookmark(id string) (json.RawMessage, error) { return a.c.post("/statuses/"+id+"/bookmark", nil) }
+func (a *FeedsAPI) DeletePost(id string) error { return a.c.del("/statuses/"+id) }
+
 func (a *FeedsAPI) GetSpeedDial() (json.RawMessage, error) {
 	return a.c.get("/feed/speeddial", nil)
 }
@@ -311,6 +323,10 @@ func (a *AccountAPI) UpdateLink(id string, link interface{}) (json.RawMessage, e
 	return a.c.put("/account/links/"+id, link)
 }
 func (a *AccountAPI) DeleteLink(id string) error { return a.c.del("/account/links/" + id) }
+func (a *AccountAPI) GetConnectedApps() (json.RawMessage, error) { return a.c.get("/account/connected-apps", nil) }
+func (a *AccountAPI) RevokeConnectedApp(authorizationId int) (json.RawMessage, error) {
+	return a.c.post(fmt.Sprintf("/account/connected-apps/%d/revoke", authorizationId), nil)
+}
 
 // =========================================================================
 // Content

@@ -212,6 +212,47 @@ class _FeedsAPI:
                                      params={"surf_id": surf_id, "format": "rss"})
         return resp.text
 
+    # Write operations (require write:statuses scope)
+
+    def create_post(self, status: str, visibility: str = "public",
+                    in_reply_to_id: str = None, sensitive: bool = False,
+                    spoiler_text: str = None, language: str = None) -> dict:
+        """Create a new post (write:statuses). Use OAuth token for user-delegated posting."""
+        body = {"status": status, "visibility": visibility}
+        if in_reply_to_id:
+            body["in_reply_to_id"] = in_reply_to_id
+        if sensitive:
+            body["sensitive"] = True
+        if spoiler_text:
+            body["spoiler_text"] = spoiler_text
+        if language:
+            body["language"] = language
+        return self._c._post("/statuses", json=body)
+
+    def favourite(self, post_id: str) -> dict:
+        """Favorite a post (write:statuses)."""
+        return self._c._post(f"/statuses/{post_id}/favourite")
+
+    def unfavourite(self, post_id: str) -> dict:
+        """Unfavorite a post (write:statuses)."""
+        return self._c._post(f"/statuses/{post_id}/unfavourite")
+
+    def boost(self, post_id: str) -> dict:
+        """Boost/reblog a post (write:statuses)."""
+        return self._c._post(f"/statuses/{post_id}/reblog")
+
+    def unboost(self, post_id: str) -> dict:
+        """Unboost a post (write:statuses)."""
+        return self._c._post(f"/statuses/{post_id}/unreblog")
+
+    def bookmark(self, post_id: str) -> dict:
+        """Bookmark a post (write:statuses)."""
+        return self._c._post(f"/statuses/{post_id}/bookmark")
+
+    def delete_post(self, post_id: str) -> dict:
+        """Delete own post (write:statuses)."""
+        return self._c._delete(f"/statuses/{post_id}")
+
 
 # ==========================================================================
 # Search
@@ -336,6 +377,14 @@ class _AccountAPI:
     def delete_link(self, link_id: str) -> dict:
         """Delete a profile link (write:account)."""
         return self._c._delete(f"/account/links/{link_id}")
+
+    def get_connected_apps(self) -> dict:
+        """Get OAuth-authorized third-party apps (read:account)."""
+        return self._c._get("/account/connected-apps")
+
+    def revoke_connected_app(self, authorization_id: int) -> dict:
+        """Revoke a third-party app's OAuth access (write:account)."""
+        return self._c._post(f"/account/connected-apps/{authorization_id}/revoke")
 
 
 # ==========================================================================
