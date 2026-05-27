@@ -5,6 +5,7 @@ Official client libraries for the [Surf API](https://developers.surf.social).
 | Language | Package | Status |
 |----------|---------|--------|
 | Python | `pip install surf-api` | Beta |
+| Java | `social.surf:surf-api` (Gradle/Maven, Java 17+) | Beta |
 | TypeScript | `npm install @surf/api` | Coming soon |
 | Go | `go get github.com/Flipboard/surf-sdks/go` | Coming soon |
 

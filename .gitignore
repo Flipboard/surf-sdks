@@ -15,6 +15,12 @@ dist/
 *.exe
 *.test
 
+# Java / Gradle
+.gradle/
+build/
+*.class
+# (Gradle wrapper jar under gradle/wrapper/ is intentionally committed)
+
 # IDE
 .idea/
 .vscode/
