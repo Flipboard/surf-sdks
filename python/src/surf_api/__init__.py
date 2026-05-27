@@ -13,17 +13,23 @@ __version__ = "0.3.0"
 __all__ = [
     "SurfClient",
     "AsyncSurfClient",
+    "SurfOAuth",
+    "AsyncSurfOAuth",
     "SurfAPIError",
     "SurfAuthError",
     "SurfNotFoundError",
     "SurfRateLimitError",
     "SurfScopeError",
+    "generate_pkce",
 ]
 
 
 def __getattr__(name):
-    """Lazy import AsyncSurfClient to avoid requiring httpx for sync-only usage."""
+    """Lazy imports to avoid requiring httpx for sync-only usage."""
     if name == "AsyncSurfClient":
         from .async_client import AsyncSurfClient
         return AsyncSurfClient
+    if name in ("SurfOAuth", "AsyncSurfOAuth", "generate_pkce"):
+        from . import oauth
+        return getattr(oauth, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
