@@ -17,7 +17,7 @@ from .exceptions import (
 DEFAULT_BASE_URL = "https://api.surf.social"
 # Internal path prefix — the SDK handles this automatically.
 # Users only need to set the base URL (e.g., "https://api.surf.social").
-API_PREFIX = "/flipboard/v1"
+API_PREFIX = "/v1"
 
 
 class RateLimitInfo:

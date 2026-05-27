@@ -21,7 +21,7 @@ import (
 
 const (
 	DefaultBaseURL = "https://api.surf.social"
-	apiPrefix      = "/flipboard/v1"
+	apiPrefix      = "/v1"
 	userAgent      = "surf-api-go/0.2.0"
 )
 

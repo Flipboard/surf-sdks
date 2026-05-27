@@ -25,7 +25,7 @@ import type {
 export * from './types';
 
 const DEFAULT_BASE_URL = 'https://api.surf.social';
-const API_PREFIX = '/flipboard/v1';
+const API_PREFIX = '/v1';
 
 // ==========================================================================
 // Errors
