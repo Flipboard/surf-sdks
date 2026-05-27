@@ -17,9 +17,14 @@ import type {
   RateLimitInfo,
   SurfErrorBody,
   FeedMeta,
+  Post,
+  PostAccount,
   ProfileLink,
   ModerationResult,
   EnrichmentData,
+  TopicsResult,
+  ResolveResult,
+  ConnectedApp,
 } from './types';
 
 export * from './types';
@@ -213,8 +218,8 @@ export class SurfClient {
 class FeedsAPI {
   constructor(private c: SurfClient) {}
 
-  get(surf_id: string) { return this.c._get('/feed', { surf_id }); }
-  getPosts(surf_id: string, opts?: { limit?: number; cursor?: string; sort?: string }) {
+  get(surf_id: string): Promise<FeedMeta> { return this.c._get('/feed', { surf_id }); }
+  getPosts(surf_id: string, opts?: { limit?: number; cursor?: string; sort?: string }): Promise<Post[]> {
     return this.c._get('/feed/posts', { surf_id, ...opts });
   }
   getPost(id: string, thread = false) {
@@ -299,13 +304,13 @@ class AccountAPI {
   get() { return this.c._get('/account'); }
   update(fields: Record<string, unknown>) { return this.c._put('/account', fields); }
   lookup(account: string) { return this.c._get('/account/lookup', { account }); }
-  getLinks(): Promise<ProfileLink[]> { return this.c._get('/account/links'); }
+  getLinks(): Promise<ProfileLink[]> { return this.c._get<ProfileLink[]>('/account/links'); }
   addLink(link: Omit<ProfileLink, 'id'>) { return this.c._post('/account/links', link); }
   updateLink(id: string, link: Partial<ProfileLink>) { return this.c._put(`/account/links/${id}`, { id, ...link }); }
   deleteLink(id: string) { return this.c._delete(`/account/links/${id}`); }
   follow(accountId: string) { return this.c._post(`/accounts/${accountId}/follow`); }
   unfollow(accountId: string) { return this.c._post(`/accounts/${accountId}/unfollow`); }
-  getConnectedApps() { return this.c._get('/account/connected-apps'); }
+  getConnectedApps(): Promise<ConnectedApp[]> { return this.c._get('/account/connected-apps'); }
   revokeConnectedApp(authorizationId: number) { return this.c._post(`/account/connected-apps/${authorizationId}/revoke`); }
 }
 
@@ -316,12 +321,12 @@ class AccountAPI {
 class ContentAPI {
   constructor(private c: SurfClient) {}
 
-  resolve(url: string) { return this.c._get('/content/resolve', { url }); }
+  resolve(url: string): Promise<ResolveResult> { return this.c._get('/content/resolve', { url }); }
   extract(url: string, type: 'article' | 'image' | 'video' | 'audio' = 'article') {
     return this.c._get('/content/extract', { url, type });
   }
   language(url: string) { return this.c._get('/content/language', { url }); }
-  topics(url: string) { return this.c._get('/content/topics', { url }); }
+  topics(url: string): Promise<TopicsResult> { return this.c._get('/content/topics', { url }); }
   enrich(postId: string): Promise<EnrichmentData> { return this.c._get('/content/enrich', { postId }); }
 }
 

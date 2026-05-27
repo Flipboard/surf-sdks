@@ -1,6 +1,22 @@
 """Surf API Python SDK — programmatic access to the Surf social platform."""
 
 from .client import SurfClient
+from .models import (
+    Post,
+    FeedMeta,
+    PostAccount,
+    Card,
+    MediaAttachment,
+    Image,
+    ImageSize,
+    Topic,
+    TopicsResult,
+    ResolveResult,
+    EnrichmentData,
+    ModerationResult,
+    ConnectedApp,
+    ProfileLink,
+)
 from .exceptions import (
     SurfAPIError,
     SurfAuthError,

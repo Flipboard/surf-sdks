@@ -78,6 +78,90 @@ export interface Topic {
   topic_type?: string;
 }
 
+/** Author/account on a post. */
+export interface PostAccount {
+  id: string;
+  username: string;
+  display_name: string;
+  url: string;
+  avatar: string;
+  followers_count?: number;
+  following_count?: number;
+  statuses_count?: number;
+  bot?: boolean;
+}
+
+/** Link preview card on a post. */
+export interface Card {
+  title: string;
+  description: string;
+  url: string;
+  image?: Image;
+  type?: string;
+}
+
+/** Media attachment on a post. */
+export interface MediaAttachment {
+  id: string;
+  type: string;
+  url: string;
+  preview_url?: string;
+  description?: string;
+}
+
+/** A post/status from the Surf API. */
+export interface Post {
+  id: string;
+  content: string;
+  created_at: string;
+  url: string;
+  favourites_count: number;
+  reblogs_count: number;
+  replies_count: number;
+  visibility: string;
+  sensitive: boolean;
+  spoiler_text?: string;
+  language?: string;
+  account?: PostAccount;
+  card?: Card;
+  media_attachments?: MediaAttachment[];
+  post_type?: string;
+  topics?: string[];
+  vibes?: { primary?: string; scores?: Record<string, number> };
+  duration?: number;
+  podcast?: boolean;
+  paywall?: boolean;
+  orientation?: string;
+}
+
+/** URL resolution result. */
+export interface ResolveResult {
+  input_url: string;
+  final_url: string;
+  status: number;
+  chain: string[];
+}
+
+/** Topics result for a URL. */
+export interface TopicsResult {
+  url: string;
+  topics: Topic[];
+  tags: string[];
+  post_types: string[];
+  language?: string;
+}
+
+/** OAuth-authorized third-party app. */
+export interface ConnectedApp {
+  authorization_id: number;
+  app_id: string;
+  app_name: string;
+  logo_url?: string;
+  scopes: string;
+  authorized_at: string;
+  last_used: string;
+}
+
 /** Post enrichment data. */
 export interface EnrichmentData {
   post_id: string;
