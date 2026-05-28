@@ -5,7 +5,7 @@ the Python `surf-api` SDK, targeting **Java 17**.
 
 - HTTP via the built-in `java.net.http.HttpClient` (no third-party HTTP dependency)
 - JSON via Jackson; structured responses deserialize into typed model classes in
-  the `social.surf.api.model` package (mirroring the backend DTOs)
+  the `social.surf.api.model` package
 - Genuinely dynamic responses (post/status objects, content/image/audio results)
   remain `Map<String, Object>`, matching how the backend itself returns them
 - Errors surface as unchecked `SurfAPIError` subclasses
@@ -203,6 +203,7 @@ cd java
 ./gradlew compileJava   # compile
 ./gradlew test          # run the test suite
 ./gradlew jar           # build the jar (build/libs/surf-api-0.2.0.jar)
+./gradlew fatJar        # build a self-contained jar with deps bundled (…-0.2.0-all.jar)
 ```
 
 Requires JDK 17 or newer. The build is pinned to Java 17 source/bytecode via

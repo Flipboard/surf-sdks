@@ -37,6 +37,23 @@ java {
     withSourcesJar()
 }
 
+// Self-contained "fat" jar bundling all runtime dependencies (Jackson + its transitive
+// deps). Useful for environments without dependency resolution. Produces
+// build/libs/surf-api-<version>-all.jar. Run with: ./gradlew fatJar
+tasks.register('fatJar', Jar) {
+    group = 'build'
+    description = 'Assembles a self-contained jar including all runtime dependencies.'
+    archiveClassifier = 'all'
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+
+    from sourceSets.main.output
+    from {
+        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+    }
+    // Drop dependency signature/metadata files that aren't valid once repackaged.
+    exclude 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA', 'META-INF/*.kotlin_module'
+}
+
 tasks.named('test') {
     useJUnitPlatform()
     testLogging {
