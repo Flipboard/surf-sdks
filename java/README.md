@@ -109,20 +109,22 @@ System.out.println(client.getRateLimit());
 
 ```java
 import social.surf.api.model.CustomFeed;
+import social.surf.api.model.NewFeedOperator;
 
-CustomFeed feed = client.customFeeds.create(
+// Create with typed operators. Operator roles:
+// source | include | filtering_include | exclude | score.
+CustomFeed feed = client.customFeeds.createWithOperators(
     "AI News",
     "Latest AI and ML news",
     List.of(
-        Map.of("type", "rss", "value", "https://example.com/ai-feed.xml"),
-        Map.of("type", "bluesky", "value", "did:plc:abc123"),
-        Map.of("type", "topic", "value", "artificial-intelligence")
+        NewFeedOperator.source("surf/topic/artificial-intelligence"),
+        NewFeedOperator.source("surf/hashtag/machinelearning")
     )
 );
 
-// Add a source (returns the updated feed)
+// Add another source (returns the updated feed)
 feed = client.customFeeds.addOperator(feed.id(),
-    Map.of("type", "keyword", "value", "machine learning"));
+    Map.of("surfId", "surf/hashtag/llm", "operator", "source"));
 
 // Publish it
 client.customFeeds.publish(feed.id());

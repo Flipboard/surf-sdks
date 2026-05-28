@@ -1,6 +1,7 @@
 package social.surf.api;
 
 import social.surf.api.model.CustomFeed;
+import social.surf.api.model.NewFeedOperator;
 
 import java.util.List;
 import java.util.Map;
@@ -43,6 +44,27 @@ public class CustomFeedsApi {
 
     /** Create a new custom feed with a description and operators (sources). */
     public CustomFeed create(String title, String description, List<Map<String, Object>> operators) {
+        return c.postAs("/custom", map("title", title, "description", description, "operators", operators), CustomFeed.class);
+    }
+
+    /**
+     * Create a new custom feed with typed operators.
+     *
+     * <p>Convenience overload that takes a list of {@link NewFeedOperator} records
+     * (the writable subset of {@code FeedOperator} — no server-assigned fields):
+     *
+     * <pre>{@code
+     * client.customFeeds.createWithOperators("AI News", "Latest AI", List.of(
+     *     NewFeedOperator.source("surf/topic/artificial-intelligence"),
+     *     NewFeedOperator.source("surf/hashtag/machinelearning")
+     * ));
+     * }</pre>
+     *
+     * @param title       feed title (required)
+     * @param description feed description, or null
+     * @param operators   the operators (sources) that define the feed
+     */
+    public CustomFeed createWithOperators(String title, String description, List<NewFeedOperator> operators) {
         return c.postAs("/custom", map("title", title, "description", description, "operators", operators), CustomFeed.class);
     }
 
