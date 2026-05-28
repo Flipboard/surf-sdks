@@ -233,29 +233,57 @@ class _AsyncFeedsAPI:
         return await self._c._get("/feed/speeddial")
 
     async def create_post(self, status: str, visibility: str = "public",
-                          in_reply_to_id: str = None, **kwargs) -> dict:
+                          in_reply_to_id: str = None, service: str = None,
+                          **kwargs) -> dict:
         body = {"status": status, "visibility": visibility, **kwargs}
         if in_reply_to_id:
             body["in_reply_to_id"] = in_reply_to_id
-        return await self._c._post("/statuses", json=body)
+        path = "/statuses"
+        if service:
+            path += f"?service={service}"
+        return await self._c._post(path, json=body)
 
-    async def favourite(self, post_id: str) -> dict:
-        return await self._c._post(f"/statuses/{post_id}/favourite")
+    async def favourite(self, post_id: str, service: str = None) -> dict:
+        path = f"/statuses/{post_id}/favourite"
+        if service:
+            path += f"?service={service}"
+        return await self._c._post(path)
 
-    async def unfavourite(self, post_id: str) -> dict:
-        return await self._c._post(f"/statuses/{post_id}/unfavourite")
+    async def unfavourite(self, post_id: str, service: str = None) -> dict:
+        path = f"/statuses/{post_id}/unfavourite"
+        if service:
+            path += f"?service={service}"
+        return await self._c._post(path)
 
-    async def boost(self, post_id: str) -> dict:
-        return await self._c._post(f"/statuses/{post_id}/reblog")
+    async def boost(self, post_id: str, service: str = None) -> dict:
+        path = f"/statuses/{post_id}/reblog"
+        if service:
+            path += f"?service={service}"
+        return await self._c._post(path)
 
-    async def unboost(self, post_id: str) -> dict:
-        return await self._c._post(f"/statuses/{post_id}/unreblog")
+    async def unboost(self, post_id: str, service: str = None) -> dict:
+        path = f"/statuses/{post_id}/unreblog"
+        if service:
+            path += f"?service={service}"
+        return await self._c._post(path)
 
-    async def bookmark(self, post_id: str) -> dict:
-        return await self._c._post(f"/statuses/{post_id}/bookmark")
+    async def bookmark(self, post_id: str, service: str = None) -> dict:
+        path = f"/statuses/{post_id}/bookmark"
+        if service:
+            path += f"?service={service}"
+        return await self._c._post(path)
 
-    async def delete_post(self, post_id: str) -> dict:
-        return await self._c._delete(f"/statuses/{post_id}")
+    async def unbookmark(self, post_id: str, service: str = None) -> dict:
+        path = f"/statuses/{post_id}/unbookmark"
+        if service:
+            path += f"?service={service}"
+        return await self._c._post(path)
+
+    async def delete_post(self, post_id: str, service: str = None) -> dict:
+        path = f"/statuses/{post_id}"
+        if service:
+            path += f"?service={service}"
+        return await self._c._delete(path)
 
 
 # ==========================================================================
@@ -352,11 +380,17 @@ class _AsyncAccountAPI:
     async def delete_link(self, link_id: str) -> dict:
         return await self._c._delete(f"/account/links/{link_id}")
 
-    async def follow(self, account_id: str) -> dict:
-        return await self._c._post(f"/accounts/{account_id}/follow")
+    async def follow(self, account_id: str, service: str = None) -> dict:
+        path = f"/accounts/{account_id}/follow"
+        if service:
+            path += f"?service={service}"
+        return await self._c._post(path)
 
-    async def unfollow(self, account_id: str) -> dict:
-        return await self._c._post(f"/accounts/{account_id}/unfollow")
+    async def unfollow(self, account_id: str, service: str = None) -> dict:
+        path = f"/accounts/{account_id}/unfollow"
+        if service:
+            path += f"?service={service}"
+        return await self._c._post(path)
 
     async def get_connected_apps(self) -> dict:
         return await self._c._get("/account/connected-apps")

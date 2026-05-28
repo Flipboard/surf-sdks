@@ -272,8 +272,13 @@ class _FeedsAPI:
 
     def create_post(self, status: str, visibility: str = "public",
                     in_reply_to_id: str = None, sensitive: bool = False,
-                    spoiler_text: str = None, language: str = None) -> dict:
-        """Create a new post (write:statuses). Use OAuth token for user-delegated posting."""
+                    spoiler_text: str = None, language: str = None,
+                    service: str = None) -> dict:
+        """Create a new post (write:statuses). Use OAuth token for user-delegated posting.
+
+        Args:
+            service: Optional target service ('bluesky' or 'mastodon').
+        """
         body = {"status": status, "visibility": visibility}
         if in_reply_to_id:
             body["in_reply_to_id"] = in_reply_to_id
@@ -283,31 +288,87 @@ class _FeedsAPI:
             body["spoiler_text"] = spoiler_text
         if language:
             body["language"] = language
-        return self._c._post("/statuses", json=body)
+        path = "/statuses"
+        if service:
+            path += f"?service={service}"
+        return self._c._post(path, json=body)
 
-    def favourite(self, post_id: str) -> dict:
-        """Favorite a post (write:statuses)."""
-        return self._c._post(f"/statuses/{post_id}/favourite")
+    def favourite(self, post_id: str, service: str = None) -> dict:
+        """Favorite a post (write:statuses).
 
-    def unfavourite(self, post_id: str) -> dict:
-        """Unfavorite a post (write:statuses)."""
-        return self._c._post(f"/statuses/{post_id}/unfavourite")
+        Args:
+            service: Optional target service ('bluesky' or 'mastodon').
+        """
+        path = f"/statuses/{post_id}/favourite"
+        if service:
+            path += f"?service={service}"
+        return self._c._post(path)
 
-    def boost(self, post_id: str) -> dict:
-        """Boost/reblog a post (write:statuses)."""
-        return self._c._post(f"/statuses/{post_id}/reblog")
+    def unfavourite(self, post_id: str, service: str = None) -> dict:
+        """Unfavorite a post (write:statuses).
 
-    def unboost(self, post_id: str) -> dict:
-        """Unboost a post (write:statuses)."""
-        return self._c._post(f"/statuses/{post_id}/unreblog")
+        Args:
+            service: Optional target service ('bluesky' or 'mastodon').
+        """
+        path = f"/statuses/{post_id}/unfavourite"
+        if service:
+            path += f"?service={service}"
+        return self._c._post(path)
 
-    def bookmark(self, post_id: str) -> dict:
-        """Bookmark a post (write:statuses)."""
-        return self._c._post(f"/statuses/{post_id}/bookmark")
+    def boost(self, post_id: str, service: str = None) -> dict:
+        """Boost/reblog a post (write:statuses).
 
-    def delete_post(self, post_id: str) -> dict:
-        """Delete own post (write:statuses)."""
-        return self._c._delete(f"/statuses/{post_id}")
+        Args:
+            service: Optional target service ('bluesky' or 'mastodon').
+        """
+        path = f"/statuses/{post_id}/reblog"
+        if service:
+            path += f"?service={service}"
+        return self._c._post(path)
+
+    def unboost(self, post_id: str, service: str = None) -> dict:
+        """Unboost a post (write:statuses).
+
+        Args:
+            service: Optional target service ('bluesky' or 'mastodon').
+        """
+        path = f"/statuses/{post_id}/unreblog"
+        if service:
+            path += f"?service={service}"
+        return self._c._post(path)
+
+    def bookmark(self, post_id: str, service: str = None) -> dict:
+        """Bookmark a post (write:statuses).
+
+        Args:
+            service: Optional target service ('bluesky' or 'mastodon').
+        """
+        path = f"/statuses/{post_id}/bookmark"
+        if service:
+            path += f"?service={service}"
+        return self._c._post(path)
+
+    def unbookmark(self, post_id: str, service: str = None) -> dict:
+        """Unbookmark a post (write:statuses).
+
+        Args:
+            service: Optional target service ('bluesky' or 'mastodon').
+        """
+        path = f"/statuses/{post_id}/unbookmark"
+        if service:
+            path += f"?service={service}"
+        return self._c._post(path)
+
+    def delete_post(self, post_id: str, service: str = None) -> dict:
+        """Delete own post (write:statuses).
+
+        Args:
+            service: Optional target service ('bluesky' or 'mastodon').
+        """
+        path = f"/statuses/{post_id}"
+        if service:
+            path += f"?service={service}"
+        return self._c._delete(path)
 
 
 # ==========================================================================
@@ -434,13 +495,27 @@ class _AccountAPI:
         """Delete a profile link (write:account)."""
         return self._c._delete(f"/account/links/{link_id}")
 
-    def follow(self, account_id: str) -> dict:
-        """Follow an account (write:statuses)."""
-        return self._c._post(f"/accounts/{account_id}/follow")
+    def follow(self, account_id: str, service: str = None) -> dict:
+        """Follow an account (write:statuses).
 
-    def unfollow(self, account_id: str) -> dict:
-        """Unfollow an account (write:statuses)."""
-        return self._c._post(f"/accounts/{account_id}/unfollow")
+        Args:
+            service: Optional target service ('bluesky' or 'mastodon').
+        """
+        path = f"/accounts/{account_id}/follow"
+        if service:
+            path += f"?service={service}"
+        return self._c._post(path)
+
+    def unfollow(self, account_id: str, service: str = None) -> dict:
+        """Unfollow an account (write:statuses).
+
+        Args:
+            service: Optional target service ('bluesky' or 'mastodon').
+        """
+        path = f"/accounts/{account_id}/unfollow"
+        if service:
+            path += f"?service={service}"
+        return self._c._post(path)
 
     def get_connected_apps(self) -> dict:
         """Get OAuth-authorized third-party apps (read:account)."""

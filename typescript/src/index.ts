@@ -229,15 +229,30 @@ class FeedsAPI {
   getSpeedDial() { return this.c._get('/feed/speeddial'); }
 
   // Write operations (require write:statuses scope)
-  createPost(body: { status: string; visibility?: string; in_reply_to_id?: string; sensitive?: boolean; spoiler_text?: string }) {
-    return this.c._post('/statuses', body);
+  createPost(body: { status: string; visibility?: string; in_reply_to_id?: string; sensitive?: boolean; spoiler_text?: string }, service?: 'bluesky' | 'mastodon') {
+    return this.c._request('POST', '/statuses', { json: body, params: service ? { service } : undefined });
   }
-  favourite(id: string) { return this.c._post(`/statuses/${id}/favourite`); }
-  unfavourite(id: string) { return this.c._post(`/statuses/${id}/unfavourite`); }
-  boost(id: string) { return this.c._post(`/statuses/${id}/reblog`); }
-  unboost(id: string) { return this.c._post(`/statuses/${id}/unreblog`); }
-  bookmark(id: string) { return this.c._post(`/statuses/${id}/bookmark`); }
-  deletePost(id: string) { return this.c._delete(`/statuses/${id}`); }
+  favourite(id: string, service?: 'bluesky' | 'mastodon') {
+    return this.c._request('POST', `/statuses/${id}/favourite`, { params: service ? { service } : undefined });
+  }
+  unfavourite(id: string, service?: 'bluesky' | 'mastodon') {
+    return this.c._request('POST', `/statuses/${id}/unfavourite`, { params: service ? { service } : undefined });
+  }
+  boost(id: string, service?: 'bluesky' | 'mastodon') {
+    return this.c._request('POST', `/statuses/${id}/reblog`, { params: service ? { service } : undefined });
+  }
+  unboost(id: string, service?: 'bluesky' | 'mastodon') {
+    return this.c._request('POST', `/statuses/${id}/unreblog`, { params: service ? { service } : undefined });
+  }
+  bookmark(id: string, service?: 'bluesky' | 'mastodon') {
+    return this.c._request('POST', `/statuses/${id}/bookmark`, { params: service ? { service } : undefined });
+  }
+  unbookmark(id: string, service?: 'bluesky' | 'mastodon') {
+    return this.c._request('POST', `/statuses/${id}/unbookmark`, { params: service ? { service } : undefined });
+  }
+  deletePost(id: string, service?: 'bluesky' | 'mastodon') {
+    return this.c._request('DELETE', `/statuses/${id}`, { params: service ? { service } : undefined });
+  }
 }
 
 // ==========================================================================
@@ -308,8 +323,12 @@ class AccountAPI {
   addLink(link: Omit<ProfileLink, 'id'>) { return this.c._post('/account/links', link); }
   updateLink(id: string, link: Partial<ProfileLink>) { return this.c._put(`/account/links/${id}`, { id, ...link }); }
   deleteLink(id: string) { return this.c._delete(`/account/links/${id}`); }
-  follow(accountId: string) { return this.c._post(`/accounts/${accountId}/follow`); }
-  unfollow(accountId: string) { return this.c._post(`/accounts/${accountId}/unfollow`); }
+  follow(accountId: string, service?: 'bluesky' | 'mastodon') {
+    return this.c._request('POST', `/accounts/${accountId}/follow`, { params: service ? { service } : undefined });
+  }
+  unfollow(accountId: string, service?: 'bluesky' | 'mastodon') {
+    return this.c._request('POST', `/accounts/${accountId}/unfollow`, { params: service ? { service } : undefined });
+  }
   getConnectedApps(): Promise<ConnectedApp[]> { return this.c._get('/account/connected-apps'); }
   revokeConnectedApp(authorizationId: number) { return this.c._post(`/account/connected-apps/${authorizationId}/revoke`); }
 }
