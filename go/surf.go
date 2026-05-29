@@ -238,17 +238,58 @@ func (a *FeedsAPI) GetFollowing(limit int) (json.RawMessage, error) {
 	return a.c.get("/feed/following", url.Values{"limit": {strconv.Itoa(limit)}})
 }
 
-// Write operations (require write:statuses scope)
-func (a *FeedsAPI) CreatePost(status, visibility string) (json.RawMessage, error) {
-	if visibility == "" { visibility = "public" }
-	return a.c.post("/statuses", map[string]string{"status": status, "visibility": visibility})
+// Write operations (require write:statuses scope).
+// The service parameter is optional — pass "" to omit it, or "bluesky"/"mastodon" to target a specific service.
+
+func svcParams(service string) url.Values {
+	if service == "" {
+		return nil
+	}
+	return url.Values{"service": {service}}
 }
-func (a *FeedsAPI) Favourite(id string) (json.RawMessage, error) { return a.c.post("/statuses/"+id+"/favourite", nil) }
-func (a *FeedsAPI) Unfavourite(id string) (json.RawMessage, error) { return a.c.post("/statuses/"+id+"/unfavourite", nil) }
-func (a *FeedsAPI) Boost(id string) (json.RawMessage, error) { return a.c.post("/statuses/"+id+"/reblog", nil) }
-func (a *FeedsAPI) Unboost(id string) (json.RawMessage, error) { return a.c.post("/statuses/"+id+"/unreblog", nil) }
-func (a *FeedsAPI) Bookmark(id string) (json.RawMessage, error) { return a.c.post("/statuses/"+id+"/bookmark", nil) }
-func (a *FeedsAPI) DeletePost(id string) error { return a.c.del("/statuses/"+id) }
+
+func (a *FeedsAPI) CreatePost(status, visibility, service string) (json.RawMessage, error) {
+	if visibility == "" {
+		visibility = "public"
+	}
+	data, err := a.c.do("POST", "/statuses", svcParams(service), map[string]string{"status": status, "visibility": visibility})
+	return json.RawMessage(data), err
+}
+
+func (a *FeedsAPI) Favourite(id, service string) (json.RawMessage, error) {
+	data, err := a.c.do("POST", "/statuses/"+id+"/favourite", svcParams(service), nil)
+	return json.RawMessage(data), err
+}
+
+func (a *FeedsAPI) Unfavourite(id, service string) (json.RawMessage, error) {
+	data, err := a.c.do("POST", "/statuses/"+id+"/unfavourite", svcParams(service), nil)
+	return json.RawMessage(data), err
+}
+
+func (a *FeedsAPI) Boost(id, service string) (json.RawMessage, error) {
+	data, err := a.c.do("POST", "/statuses/"+id+"/reblog", svcParams(service), nil)
+	return json.RawMessage(data), err
+}
+
+func (a *FeedsAPI) Unboost(id, service string) (json.RawMessage, error) {
+	data, err := a.c.do("POST", "/statuses/"+id+"/unreblog", svcParams(service), nil)
+	return json.RawMessage(data), err
+}
+
+func (a *FeedsAPI) Bookmark(id, service string) (json.RawMessage, error) {
+	data, err := a.c.do("POST", "/statuses/"+id+"/bookmark", svcParams(service), nil)
+	return json.RawMessage(data), err
+}
+
+func (a *FeedsAPI) Unbookmark(id, service string) (json.RawMessage, error) {
+	data, err := a.c.do("POST", "/statuses/"+id+"/unbookmark", svcParams(service), nil)
+	return json.RawMessage(data), err
+}
+
+func (a *FeedsAPI) DeletePost(id, service string) error {
+	_, err := a.c.do("DELETE", "/statuses/"+id, svcParams(service), nil)
+	return err
+}
 
 func (a *FeedsAPI) GetSpeedDial() (json.RawMessage, error) {
 	return a.c.get("/feed/speeddial", nil)
@@ -323,6 +364,14 @@ func (a *AccountAPI) UpdateLink(id string, link interface{}) (json.RawMessage, e
 	return a.c.put("/account/links/"+id, link)
 }
 func (a *AccountAPI) DeleteLink(id string) error { return a.c.del("/account/links/" + id) }
+func (a *AccountAPI) Follow(accountId, service string) (json.RawMessage, error) {
+	data, err := a.c.do("POST", "/accounts/"+accountId+"/follow", svcParams(service), nil)
+	return json.RawMessage(data), err
+}
+func (a *AccountAPI) Unfollow(accountId, service string) (json.RawMessage, error) {
+	data, err := a.c.do("POST", "/accounts/"+accountId+"/unfollow", svcParams(service), nil)
+	return json.RawMessage(data), err
+}
 func (a *AccountAPI) GetConnectedApps() (json.RawMessage, error) { return a.c.get("/account/connected-apps", nil) }
 func (a *AccountAPI) RevokeConnectedApp(authorizationId int) (json.RawMessage, error) {
 	return a.c.post(fmt.Sprintf("/account/connected-apps/%d/revoke", authorizationId), nil)

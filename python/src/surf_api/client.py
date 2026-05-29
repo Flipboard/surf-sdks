@@ -67,10 +67,12 @@ class SurfClient:
         api_key: str,
         base_url: str = DEFAULT_BASE_URL,
         timeout: int = 30,
+        max_retries: int = 3,
     ):
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
+        self.max_retries = max_retries
         self.rate_limit: Optional[RateLimitInfo] = None
 
         self._session = requests.Session()
@@ -98,12 +100,34 @@ class SurfClient:
 
     def _request(self, method: str, path: str, **kwargs) -> dict:
         kwargs.setdefault("timeout", self.timeout)
-        resp = self._session.request(method, self._url(path), **kwargs)
-        self.rate_limit = RateLimitInfo(resp.headers)
-        self._check_errors(resp)
-        if resp.status_code == 204:
-            return {}
-        return resp.json()
+        import time as _time
+        last_exc = None
+        for attempt in range(self.max_retries + 1):
+            try:
+                resp = self._session.request(method, self._url(path), **kwargs)
+                self.rate_limit = RateLimitInfo(resp.headers)
+                if resp.status_code == 429 and attempt < self.max_retries:
+                    retry_after = int(resp.headers.get("Retry-After", 2 ** attempt))
+                    _time.sleep(min(retry_after, 60))
+                    continue
+                if resp.status_code >= 500 and attempt < self.max_retries:
+                    _time.sleep(2 ** attempt)
+                    continue
+                self._check_errors(resp)
+                if resp.status_code == 204:
+                    return {}
+                return resp.json()
+            except (requests.ConnectionError, requests.Timeout) as e:
+                last_exc = e
+                if attempt < self.max_retries:
+                    _time.sleep(2 ** attempt)
+                    continue
+                raise SurfAPIError(f"Connection failed after {self.max_retries + 1} attempts: {e}",
+                                   status_code=0, error_code="connection_error")
+        # Should not reach here, but just in case
+        if last_exc:
+            raise last_exc
+        return {}
 
     def _request_raw(self, method: str, path: str, **kwargs) -> requests.Response:
         """Make a request and return the raw Response (for binary/text responses)."""
@@ -194,6 +218,38 @@ class _FeedsAPI:
             "sort": sort, "services": services,
         })
 
+    def iter_posts(self, surf_id: str, limit: int = None, page_size: int = 40,
+                   sort: str = None, services: str = None) -> Iterator[dict]:
+        """Auto-paginate through all posts in a feed.
+
+        Yields individual post dicts. Stops when no more results or `limit` is reached.
+
+        Args:
+            surf_id: Feed ID
+            limit: Max total posts to yield (None = no limit)
+            page_size: Posts per API call (default 40)
+            sort: Sort order (recent or top)
+            services: Filter by service (mastodon, bluesky, rss)
+        """
+        cursor = None
+        fetched = 0
+        while True:
+            data = self.get_posts(surf_id, limit=page_size, cursor=cursor,
+                                  sort=sort, services=services)
+            posts = data if isinstance(data, list) else data.get("posts", data) if isinstance(data, dict) else []
+            if isinstance(posts, dict):
+                posts = list(posts.values()) if posts else []
+            if not posts:
+                break
+            for post in posts:
+                yield post
+                fetched += 1
+                if limit and fetched >= limit:
+                    return
+            cursor = data.get("cursor") if isinstance(data, dict) else None
+            if not cursor:
+                break
+
     def get_post(self, post_id: str, thread: bool = False) -> dict:
         """Get a single post by ID, optionally with thread context."""
         return self._c._get("/post", {"id": post_id, "thread": str(thread).lower()})
@@ -216,8 +272,13 @@ class _FeedsAPI:
 
     def create_post(self, status: str, visibility: str = "public",
                     in_reply_to_id: str = None, sensitive: bool = False,
-                    spoiler_text: str = None, language: str = None) -> dict:
-        """Create a new post (write:statuses). Use OAuth token for user-delegated posting."""
+                    spoiler_text: str = None, language: str = None,
+                    service: str = None) -> dict:
+        """Create a new post (write:statuses). Use OAuth token for user-delegated posting.
+
+        Args:
+            service: Optional target service ('bluesky' or 'mastodon').
+        """
         body = {"status": status, "visibility": visibility}
         if in_reply_to_id:
             body["in_reply_to_id"] = in_reply_to_id
@@ -227,31 +288,87 @@ class _FeedsAPI:
             body["spoiler_text"] = spoiler_text
         if language:
             body["language"] = language
-        return self._c._post("/statuses", json=body)
+        path = "/statuses"
+        if service:
+            path += f"?service={service}"
+        return self._c._post(path, json=body)
 
-    def favourite(self, post_id: str) -> dict:
-        """Favorite a post (write:statuses)."""
-        return self._c._post(f"/statuses/{post_id}/favourite")
+    def favourite(self, post_id: str, service: str = None) -> dict:
+        """Favorite a post (write:statuses).
 
-    def unfavourite(self, post_id: str) -> dict:
-        """Unfavorite a post (write:statuses)."""
-        return self._c._post(f"/statuses/{post_id}/unfavourite")
+        Args:
+            service: Optional target service ('bluesky' or 'mastodon').
+        """
+        path = f"/statuses/{post_id}/favourite"
+        if service:
+            path += f"?service={service}"
+        return self._c._post(path)
 
-    def boost(self, post_id: str) -> dict:
-        """Boost/reblog a post (write:statuses)."""
-        return self._c._post(f"/statuses/{post_id}/reblog")
+    def unfavourite(self, post_id: str, service: str = None) -> dict:
+        """Unfavorite a post (write:statuses).
 
-    def unboost(self, post_id: str) -> dict:
-        """Unboost a post (write:statuses)."""
-        return self._c._post(f"/statuses/{post_id}/unreblog")
+        Args:
+            service: Optional target service ('bluesky' or 'mastodon').
+        """
+        path = f"/statuses/{post_id}/unfavourite"
+        if service:
+            path += f"?service={service}"
+        return self._c._post(path)
 
-    def bookmark(self, post_id: str) -> dict:
-        """Bookmark a post (write:statuses)."""
-        return self._c._post(f"/statuses/{post_id}/bookmark")
+    def boost(self, post_id: str, service: str = None) -> dict:
+        """Boost/reblog a post (write:statuses).
 
-    def delete_post(self, post_id: str) -> dict:
-        """Delete own post (write:statuses)."""
-        return self._c._delete(f"/statuses/{post_id}")
+        Args:
+            service: Optional target service ('bluesky' or 'mastodon').
+        """
+        path = f"/statuses/{post_id}/reblog"
+        if service:
+            path += f"?service={service}"
+        return self._c._post(path)
+
+    def unboost(self, post_id: str, service: str = None) -> dict:
+        """Unboost a post (write:statuses).
+
+        Args:
+            service: Optional target service ('bluesky' or 'mastodon').
+        """
+        path = f"/statuses/{post_id}/unreblog"
+        if service:
+            path += f"?service={service}"
+        return self._c._post(path)
+
+    def bookmark(self, post_id: str, service: str = None) -> dict:
+        """Bookmark a post (write:statuses).
+
+        Args:
+            service: Optional target service ('bluesky' or 'mastodon').
+        """
+        path = f"/statuses/{post_id}/bookmark"
+        if service:
+            path += f"?service={service}"
+        return self._c._post(path)
+
+    def unbookmark(self, post_id: str, service: str = None) -> dict:
+        """Unbookmark a post (write:statuses).
+
+        Args:
+            service: Optional target service ('bluesky' or 'mastodon').
+        """
+        path = f"/statuses/{post_id}/unbookmark"
+        if service:
+            path += f"?service={service}"
+        return self._c._post(path)
+
+    def delete_post(self, post_id: str, service: str = None) -> dict:
+        """Delete own post (write:statuses).
+
+        Args:
+            service: Optional target service ('bluesky' or 'mastodon').
+        """
+        path = f"/statuses/{post_id}"
+        if service:
+            path += f"?service={service}"
+        return self._c._delete(path)
 
 
 # ==========================================================================
@@ -377,6 +494,28 @@ class _AccountAPI:
     def delete_link(self, link_id: str) -> dict:
         """Delete a profile link (write:account)."""
         return self._c._delete(f"/account/links/{link_id}")
+
+    def follow(self, account_id: str, service: str = None) -> dict:
+        """Follow an account (write:statuses).
+
+        Args:
+            service: Optional target service ('bluesky' or 'mastodon').
+        """
+        path = f"/accounts/{account_id}/follow"
+        if service:
+            path += f"?service={service}"
+        return self._c._post(path)
+
+    def unfollow(self, account_id: str, service: str = None) -> dict:
+        """Unfollow an account (write:statuses).
+
+        Args:
+            service: Optional target service ('bluesky' or 'mastodon').
+        """
+        path = f"/accounts/{account_id}/unfollow"
+        if service:
+            path += f"?service={service}"
+        return self._c._post(path)
 
     def get_connected_apps(self) -> dict:
         """Get OAuth-authorized third-party apps (read:account)."""

@@ -17,12 +17,19 @@ import type {
   RateLimitInfo,
   SurfErrorBody,
   FeedMeta,
+  Post,
+  PostAccount,
   ProfileLink,
   ModerationResult,
   EnrichmentData,
+  TopicsResult,
+  ResolveResult,
+  ConnectedApp,
 } from './types';
 
 export * from './types';
+export { SurfOAuth, generatePKCE } from './oauth';
+export type { SurfOAuthOptions, AuthorizeUrlResult, OAuthTokens } from './oauth';
 
 const DEFAULT_BASE_URL = 'https://api.surf.social';
 const API_PREFIX = '/v1';
@@ -211,8 +218,8 @@ export class SurfClient {
 class FeedsAPI {
   constructor(private c: SurfClient) {}
 
-  get(surf_id: string) { return this.c._get('/feed', { surf_id }); }
-  getPosts(surf_id: string, opts?: { limit?: number; cursor?: string; sort?: string }) {
+  get(surf_id: string): Promise<FeedMeta> { return this.c._get('/feed', { surf_id }); }
+  getPosts(surf_id: string, opts?: { limit?: number; cursor?: string; sort?: string }): Promise<Post[]> {
     return this.c._get('/feed/posts', { surf_id, ...opts });
   }
   getPost(id: string, thread = false) {
@@ -222,15 +229,30 @@ class FeedsAPI {
   getSpeedDial() { return this.c._get('/feed/speeddial'); }
 
   // Write operations (require write:statuses scope)
-  createPost(body: { status: string; visibility?: string; in_reply_to_id?: string; sensitive?: boolean; spoiler_text?: string }) {
-    return this.c._post('/statuses', body);
+  createPost(body: { status: string; visibility?: string; in_reply_to_id?: string; sensitive?: boolean; spoiler_text?: string }, service?: 'bluesky' | 'mastodon') {
+    return this.c._request('POST', '/statuses', { json: body, params: service ? { service } : undefined });
   }
-  favourite(id: string) { return this.c._post(`/statuses/${id}/favourite`); }
-  unfavourite(id: string) { return this.c._post(`/statuses/${id}/unfavourite`); }
-  boost(id: string) { return this.c._post(`/statuses/${id}/reblog`); }
-  unboost(id: string) { return this.c._post(`/statuses/${id}/unreblog`); }
-  bookmark(id: string) { return this.c._post(`/statuses/${id}/bookmark`); }
-  deletePost(id: string) { return this.c._delete(`/statuses/${id}`); }
+  favourite(id: string, service?: 'bluesky' | 'mastodon') {
+    return this.c._request('POST', `/statuses/${id}/favourite`, { params: service ? { service } : undefined });
+  }
+  unfavourite(id: string, service?: 'bluesky' | 'mastodon') {
+    return this.c._request('POST', `/statuses/${id}/unfavourite`, { params: service ? { service } : undefined });
+  }
+  boost(id: string, service?: 'bluesky' | 'mastodon') {
+    return this.c._request('POST', `/statuses/${id}/reblog`, { params: service ? { service } : undefined });
+  }
+  unboost(id: string, service?: 'bluesky' | 'mastodon') {
+    return this.c._request('POST', `/statuses/${id}/unreblog`, { params: service ? { service } : undefined });
+  }
+  bookmark(id: string, service?: 'bluesky' | 'mastodon') {
+    return this.c._request('POST', `/statuses/${id}/bookmark`, { params: service ? { service } : undefined });
+  }
+  unbookmark(id: string, service?: 'bluesky' | 'mastodon') {
+    return this.c._request('POST', `/statuses/${id}/unbookmark`, { params: service ? { service } : undefined });
+  }
+  deletePost(id: string, service?: 'bluesky' | 'mastodon') {
+    return this.c._request('DELETE', `/statuses/${id}`, { params: service ? { service } : undefined });
+  }
 }
 
 // ==========================================================================
@@ -297,11 +319,17 @@ class AccountAPI {
   get() { return this.c._get('/account'); }
   update(fields: Record<string, unknown>) { return this.c._put('/account', fields); }
   lookup(account: string) { return this.c._get('/account/lookup', { account }); }
-  getLinks(): Promise<ProfileLink[]> { return this.c._get('/account/links'); }
+  getLinks(): Promise<ProfileLink[]> { return this.c._get<ProfileLink[]>('/account/links'); }
   addLink(link: Omit<ProfileLink, 'id'>) { return this.c._post('/account/links', link); }
   updateLink(id: string, link: Partial<ProfileLink>) { return this.c._put(`/account/links/${id}`, { id, ...link }); }
   deleteLink(id: string) { return this.c._delete(`/account/links/${id}`); }
-  getConnectedApps() { return this.c._get('/account/connected-apps'); }
+  follow(accountId: string, service?: 'bluesky' | 'mastodon') {
+    return this.c._request('POST', `/accounts/${accountId}/follow`, { params: service ? { service } : undefined });
+  }
+  unfollow(accountId: string, service?: 'bluesky' | 'mastodon') {
+    return this.c._request('POST', `/accounts/${accountId}/unfollow`, { params: service ? { service } : undefined });
+  }
+  getConnectedApps(): Promise<ConnectedApp[]> { return this.c._get('/account/connected-apps'); }
   revokeConnectedApp(authorizationId: number) { return this.c._post(`/account/connected-apps/${authorizationId}/revoke`); }
 }
 
@@ -312,12 +340,12 @@ class AccountAPI {
 class ContentAPI {
   constructor(private c: SurfClient) {}
 
-  resolve(url: string) { return this.c._get('/content/resolve', { url }); }
+  resolve(url: string): Promise<ResolveResult> { return this.c._get('/content/resolve', { url }); }
   extract(url: string, type: 'article' | 'image' | 'video' | 'audio' = 'article') {
     return this.c._get('/content/extract', { url, type });
   }
   language(url: string) { return this.c._get('/content/language', { url }); }
-  topics(url: string) { return this.c._get('/content/topics', { url }); }
+  topics(url: string): Promise<TopicsResult> { return this.c._get('/content/topics', { url }); }
   enrich(postId: string): Promise<EnrichmentData> { return this.c._get('/content/enrich', { postId }); }
 }
 
