@@ -1,0 +1,110 @@
+plugins {
+    id 'java-library'
+    id 'maven-publish'
+}
+
+group = 'social.surf'
+version = '1.0.0'
+description = 'Java SDK for the Surf social platform API'
+
+ext {
+    jacksonVersion = '2.17.2'
+    junitVersion = '5.10.2'
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // JSON (de)serialization. HTTP is handled by the built-in java.net.http.HttpClient.
+    api "com.fasterxml.jackson.core:jackson-databind:${jacksonVersion}"
+
+    // Tests
+    testImplementation platform("org.junit:junit-bom:${junitVersion}")
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+// release=17 makes the JDK reject any API newer than Java 17, guaranteeing Java 17
+// source + bytecode compatibility even when building on a newer JDK (e.g. 21).
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release = 17
+}
+
+java {
+    withSourcesJar()
+}
+
+// Self-contained "fat" jar bundling all runtime dependencies (Jackson + its transitive
+// deps). Useful for environments without dependency resolution. Produces
+// build/libs/surf-api-<version>-all.jar. Run with: ./gradlew fatJar
+tasks.register('fatJar', Jar) {
+    group = 'build'
+    description = 'Assembles a self-contained jar including all runtime dependencies.'
+    archiveClassifier = 'all'
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+
+    from sourceSets.main.output
+    from {
+        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+    }
+    // Drop dependency signature/metadata files that aren't valid once repackaged.
+    exclude 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA', 'META-INF/*.kotlin_module'
+}
+
+tasks.named('test') {
+    useJUnitPlatform {
+        excludeTags 'integration'
+    }
+    testLogging {
+        events 'passed', 'skipped', 'failed'
+    }
+}
+
+// Integration tests run against the live API. Requires SURF_API_TEST_TOKEN env var.
+// Run with: ./gradlew integrationTest
+tasks.register('integrationTest', Test) {
+    group = 'verification'
+    description = 'Runs integration tests against the live Surf API.'
+    useJUnitPlatform {
+        includeTags 'integration'
+    }
+    testLogging {
+        events 'passed', 'skipped', 'failed'
+        showStandardStreams = true
+    }
+    // Pass env vars through to the test JVM
+    environment 'SURF_API_TEST_TOKEN', System.getenv('SURF_API_TEST_TOKEN') ?: ''
+    environment 'SURF_API_BASE_URL', System.getenv('SURF_API_BASE_URL') ?: ''
+}
+
+publishing {
+    publications {
+        maven(MavenPublication) {
+            from components.java
+            pom {
+                name = 'surf-api'
+                description = project.description
+                url = 'https://developers.surf.social'
+                licenses {
+                    license {
+                        name = 'MIT License'
+                        url = 'https://opensource.org/licenses/MIT'
+                    }
+                }
+                developers {
+                    developer {
+                        name = 'Flipboard'
+                        email = 'support@surf.social'
+                    }
+                }
+                scm {
+                    url = 'https://github.com/Flipboard/surf-sdks'
+                    connection = 'scm:git:https://github.com/Flipboard/surf-sdks.git'
+                }
+            }
+        }
+    }
+}

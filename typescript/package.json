@@ -1,0 +1,28 @@
+{
+  "name": "@surf/api",
+  "version": "1.0.0",
+  "description": "TypeScript/JavaScript SDK for the Surf social platform API",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "tsc",
+    "test:integration": "npx tsx --test tests/integration.test.ts"
+  },
+  "keywords": ["surf", "api", "social", "feeds", "bluesky", "mastodon", "fediverse", "search", "ai"],
+  "author": "Flipboard <support@surf.social>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Flipboard/surf-sdks",
+    "directory": "typescript"
+  },
+  "homepage": "https://surf.social/devportal/v1/getting-started",
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3"
+  }
+}
