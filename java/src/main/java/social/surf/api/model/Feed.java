@@ -30,7 +30,6 @@ public record Feed(
         @JsonProperty("stats") FeedStatistics stats,
         @JsonProperty("sources") List<FeedOperator> sources,
         @JsonProperty("tags") List<String> tags,
-        @JsonProperty("feed_images") List<FeedImage> feedImages,
         @JsonProperty("summary_topics") List<SummaryTag> summaryTopics,
         @JsonProperty("summary_tags") List<SummaryTag> summaryTags,
         @JsonProperty("bluesky_feed") String blueskyFeed,
