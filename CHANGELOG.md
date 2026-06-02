@@ -9,6 +9,7 @@ All notable changes to the Surf API SDKs will be documented here. All SDKs share
 ### Changed
 - Python: Integration tests now live in `python/tests/` and use the SDK client directly (no external repo dependency)
 - Test harness (`run_all.sh`) runs Python tests from the SDK repo instead of py-services
+- Java: percent-encode post IDs in status path segments
 
 ---
 

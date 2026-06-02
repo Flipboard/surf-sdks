@@ -111,7 +111,7 @@ public class FeedsApi {
 
     /** Favorite a post targeting a specific service. */
     public Map<String, Object> favourite(String postId, String service) {
-        return c.post(servicePath("/statuses/" + postId + "/favourite", service));
+        return c.post(servicePath("/statuses/" + enc(postId) + "/favourite", service));
     }
 
     /** Unfavorite a post ({@code write:statuses}). */
@@ -120,7 +120,7 @@ public class FeedsApi {
     }
 
     public Map<String, Object> unfavourite(String postId, String service) {
-        return c.post(servicePath("/statuses/" + postId + "/unfavourite", service));
+        return c.post(servicePath("/statuses/" + enc(postId) + "/unfavourite", service));
     }
 
     /** Boost/reblog a post ({@code write:statuses}). */
@@ -129,7 +129,7 @@ public class FeedsApi {
     }
 
     public Map<String, Object> boost(String postId, String service) {
-        return c.post(servicePath("/statuses/" + postId + "/reblog", service));
+        return c.post(servicePath("/statuses/" + enc(postId) + "/reblog", service));
     }
 
     /** Unboost a post ({@code write:statuses}). */
@@ -138,7 +138,7 @@ public class FeedsApi {
     }
 
     public Map<String, Object> unboost(String postId, String service) {
-        return c.post(servicePath("/statuses/" + postId + "/unreblog", service));
+        return c.post(servicePath("/statuses/" + enc(postId) + "/unreblog", service));
     }
 
     /** Bookmark a post ({@code write:statuses}). */
@@ -147,7 +147,7 @@ public class FeedsApi {
     }
 
     public Map<String, Object> bookmark(String postId, String service) {
-        return c.post(servicePath("/statuses/" + postId + "/bookmark", service));
+        return c.post(servicePath("/statuses/" + enc(postId) + "/bookmark", service));
     }
 
     /** Unbookmark a post ({@code write:statuses}). */
@@ -156,7 +156,7 @@ public class FeedsApi {
     }
 
     public Map<String, Object> unbookmark(String postId, String service) {
-        return c.post(servicePath("/statuses/" + postId + "/unbookmark", service));
+        return c.post(servicePath("/statuses/" + enc(postId) + "/unbookmark", service));
     }
 
     /** Delete own post ({@code write:statuses}). */
@@ -165,11 +165,21 @@ public class FeedsApi {
     }
 
     public Map<String, Object> deletePost(String postId, String service) {
-        return c.delete(servicePath("/statuses/" + postId, service));
+        return c.delete(servicePath("/statuses/" + enc(postId), service));
     }
 
     /** Append {@code ?service=bluesky|mastodon} if non-null. */
     private static String servicePath(String path, String service) {
         return service != null ? path + "?service=" + service : path;
+    }
+
+    /**
+     * Percent-encode a post id for use as a single URL path segment. Surf post ids are
+     * Bluesky AT-URIs ({@code at://did:plc:.../app.bsky.feed.post/...}) whose {@code :}
+     * and {@code /} characters must be escaped, or the gateway splits them into extra
+     * path segments and returns "Route not found".
+     */
+    private static String enc(String postId) {
+        return SurfClient.encodePathSegment(postId);
     }
 }
