@@ -4,6 +4,14 @@ All notable changes to the Surf API SDKs will be documented here. All SDKs share
 
 ---
 
+## Unreleased
+
+### Changed
+- Python: Integration tests now live in `python/tests/` and use the SDK client directly (no external repo dependency)
+- Test harness (`run_all.sh`) runs Python tests from the SDK repo instead of py-services
+
+---
+
 ## v1.0.0 -- 2026-06-01
 
 Initial public release.

@@ -104,17 +104,38 @@ MCP Server URL: https://mcp.surf.social/mcp
 
 ## Testing
 
-Each SDK has integration tests that run against the live API:
+Each SDK has integration tests that run against the live API. All require a `SURF_API_TEST_TOKEN` environment variable.
 
 ```bash
-# Run all SDK tests
+# Run all 4 SDKs at once (~3 min, handles rate limits automatically)
 SURF_API_TEST_TOKEN=surf_sk_live_... ./test-harness/run_all.sh
+```
 
-# Or run individually
-cd python && pytest tests/ -v
-cd typescript && npm run test:integration
-cd go && go test -tags integration -v
-cd java && ./gradlew integrationTest
+### Individual SDKs
+
+**Python** (24 tests) -- requires `requests` and `pytest`:
+```bash
+cd python
+SURF_API_TEST_TOKEN=surf_sk_live_... python3 -m pytest tests/ -v
+```
+
+**TypeScript** (24 tests) -- requires Node.js 18+ and `tsx`:
+```bash
+cd typescript
+npm install
+SURF_API_TEST_TOKEN=surf_sk_live_... npm run test:integration
+```
+
+**Go** (20 tests) -- requires Go 1.21+:
+```bash
+cd go
+SURF_API_TEST_TOKEN=surf_sk_live_... go test -tags integration -v
+```
+
+**Java** (21 tests) -- requires JDK 17+ (Gradle wrapper included):
+```bash
+cd java
+SURF_API_TEST_TOKEN=surf_sk_live_... ./gradlew integrationTest
 ```
 
 ## Contributing

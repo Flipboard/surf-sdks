@@ -31,7 +31,7 @@ run_python() {
     echo "═══════════════════════════════════════════"
     echo "  Python SDK"
     echo "═══════════════════════════════════════════"
-    cd "$ROOT/../py-services/apps/devportal"
+    cd "$ROOT/python"
     if ! command -v python3 &>/dev/null; then
         echo "  SKIP: python3 not found"
         SKIPPED+=("python")
