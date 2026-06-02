@@ -497,6 +497,20 @@ public class SurfClient {
         return m;
     }
 
+    /**
+     * Percent-encode a single URL path segment. Unlike query encoding, spaces become
+     * {@code %20} (not {@code +}) and reserved characters such as {@code /} and {@code :}
+     * are escaped, so an identifier containing them (e.g. a Bluesky AT-URI like
+     * {@code at://did:plc:.../app.bsky.feed.post/...}) is carried as one segment rather
+     * than expanding into extra path segments and missing the route.
+     */
+    static String encodePathSegment(String segment) {
+        if (segment == null) {
+            return "";
+        }
+        return URLEncoder.encode(segment, StandardCharsets.UTF_8).replace("+", "%20");
+    }
+
     private static String stripTrailingSlashes(String s) {
         if (s == null) {
             return DEFAULT_BASE_URL;
