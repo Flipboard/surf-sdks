@@ -224,7 +224,10 @@ func TestIntegration(t *testing.T) {
 		})
 
 		t.Run("SearchEmptyQuery", func(t *testing.T) {
-			_, err := client.Search.Feeds("", 5)
+			err := retryOnRateLimit(t, func() error {
+				_, e := client.Search.Feeds("", 5)
+				return e
+			})
 			// Either succeeds (empty results) or returns 400; both are acceptable
 			if err != nil {
 				var apiErr *APIError
