@@ -11,6 +11,7 @@ All notable changes to the Surf API SDKs will be documented here. All SDKs share
 - Test harness (`run_all.sh`) runs Python tests from the SDK repo instead of py-services
 - Java: percent-encode post IDs in status path segments
 - Java: remove non-returned "feed_images" parameter
+- Go, TypeScript: add `services` filter to `getPosts` / `GetPosts` (align with Python and Java)
 
 ---
 

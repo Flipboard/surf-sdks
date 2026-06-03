@@ -4,13 +4,25 @@
   "description": "TypeScript/JavaScript SDK for the Surf social platform API",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
     "prepublishOnly": "tsc",
     "test:integration": "npx tsx --test tests/integration.test.ts"
   },
-  "keywords": ["surf", "api", "social", "feeds", "bluesky", "mastodon", "fediverse", "search", "ai"],
+  "keywords": [
+    "surf",
+    "api",
+    "social",
+    "feeds",
+    "bluesky",
+    "mastodon",
+    "fediverse",
+    "search",
+    "ai"
+  ],
   "author": "Flipboard <support@surf.social>",
   "license": "MIT",
   "repository": {
