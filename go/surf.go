@@ -191,9 +191,10 @@ func atoi(s string) int {
 
 // PostsOptions for feed post queries.
 type PostsOptions struct {
-	Limit   int
-	Cursor  string
-	Sort    string
+	Limit    int
+	Cursor   string
+	Sort     string
+	Services string // filter by network: "mastodon", "bluesky", "rss"
 }
 
 func (o *PostsOptions) params(surfId string) url.Values {
@@ -207,6 +208,9 @@ func (o *PostsOptions) params(surfId string) url.Values {
 		}
 		if o.Sort != "" {
 			v.Set("sort", o.Sort)
+		}
+		if o.Services != "" {
+			v.Set("services", o.Services)
 		}
 	}
 	return v

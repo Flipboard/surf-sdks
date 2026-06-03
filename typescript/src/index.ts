@@ -220,7 +220,7 @@ class FeedsAPI {
   constructor(private c: SurfClient) {}
 
   get(surf_id: string): Promise<FeedMeta> { return this.c._get('/feed', { surf_id }); }
-  getPosts(surf_id: string, opts?: { limit?: number; cursor?: string; sort?: string }): Promise<Post[]> {
+  getPosts(surf_id: string, opts?: { limit?: number; cursor?: string; sort?: string; services?: string }): Promise<Post[]> {
     return this.c._get('/feed/posts', { surf_id, ...opts });
   }
   getPost(id: string, thread = false) {
