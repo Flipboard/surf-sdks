@@ -12,6 +12,7 @@ All notable changes to the Surf API SDKs will be documented here. All SDKs share
 - Java: percent-encode post IDs in status path segments
 - Java: remove non-returned "feed_images" parameter
 - Go, TypeScript: add `services` filter to `getPosts` / `GetPosts` (align with Python and Java)
+- Go: make `service` parameter optional (variadic) on all write methods — `Favourite`, `Unfavourite`, `Boost`, `Unboost`, `Bookmark`, `Unbookmark`, `CreatePost`, `DeletePost`, `Follow`, `Unfollow`. **Source-breaking** for callers that stored these as typed function values or implemented an interface with the old `(string, string)` signature; call-site usage is unaffected.
 
 ---
 
