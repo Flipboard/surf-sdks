@@ -13,6 +13,9 @@ All notable changes to the Surf API SDKs will be documented here. All SDKs share
 - Java: remove non-returned "feed_images" parameter
 - Go, TypeScript: add `services` filter to `getPosts` / `GetPosts` (align with Python and Java)
 
+### Fixed
+- Go: `SearchEmptyQuery` test handles 429 rate limit with retry instead of failing
+
 ---
 
 ## v1.0.0 -- 2026-06-01
