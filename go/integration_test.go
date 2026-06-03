@@ -634,5 +634,24 @@ func TestIntegration(t *testing.T) {
 				t.Logf("Warning: RateLimit.Limit=%d (may not be set by server)", client.RateLimit.Limit)
 			}
 		})
+
+		t.Run("ServiceParamValidation", func(t *testing.T) {
+			// Passing 2+ service values must return an error, not panic.
+			_, err := client.Feeds.Favourite("any-id", "bluesky", "mastodon")
+			if err == nil {
+				t.Fatal("Expected error when 2 service values provided, got nil")
+			}
+			if !strings.Contains(err.Error(), "at most one service value") {
+				t.Errorf("Unexpected error message: %v", err)
+			}
+
+			// Omitting service entirely must not error at the validation layer.
+			// Use a read-only call so no post is created; network/auth errors are fine —
+			// we only care that svcParams does not reject a zero-length service slice.
+			_, err = client.Feeds.Get("surf/topic/technology")
+			if err != nil && strings.Contains(err.Error(), "at most one service value") {
+				t.Errorf("Omitting service should not trigger validation error, got: %v", err)
+			}
+		})
 	})
 }

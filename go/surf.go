@@ -244,55 +244,92 @@ func (a *FeedsAPI) GetFollowing(limit int) (json.RawMessage, error) {
 }
 
 // Write operations (require write:statuses scope).
-// The service parameter is optional — pass "" to omit it, or "bluesky"/"mastodon" to target a specific service.
+// The service parameter is optional — omit it to use the default linked account (prefers Bluesky),
+// or pass exactly one value ("bluesky" or "mastodon") to target a specific service.
+// Passing more than one value returns an error.
 
-func svcParams(service string) url.Values {
-	if service == "" {
-		return nil
+func svcParams(service []string) (url.Values, error) {
+	if len(service) > 1 {
+		return nil, fmt.Errorf("surf: at most one service value may be provided, got %d", len(service))
 	}
-	return url.Values{"service": {service}}
+	if len(service) == 0 || service[0] == "" {
+		return nil, nil
+	}
+	return url.Values{"service": {service[0]}}, nil
 }
 
-func (a *FeedsAPI) CreatePost(status, visibility, service string) (json.RawMessage, error) {
+func (a *FeedsAPI) CreatePost(status, visibility string, service ...string) (json.RawMessage, error) {
 	if visibility == "" {
 		visibility = "public"
 	}
-	data, err := a.c.do("POST", "/statuses", svcParams(service), map[string]string{"status": status, "visibility": visibility})
+	params, err := svcParams(service)
+	if err != nil {
+		return nil, err
+	}
+	data, err := a.c.do("POST", "/statuses", params, map[string]string{"status": status, "visibility": visibility})
 	return json.RawMessage(data), err
 }
 
-func (a *FeedsAPI) Favourite(id, service string) (json.RawMessage, error) {
-	data, err := a.c.do("POST", "/statuses/"+id+"/favourite", svcParams(service), nil)
+func (a *FeedsAPI) Favourite(id string, service ...string) (json.RawMessage, error) {
+	params, err := svcParams(service)
+	if err != nil {
+		return nil, err
+	}
+	data, err := a.c.do("POST", "/statuses/"+id+"/favourite", params, nil)
 	return json.RawMessage(data), err
 }
 
-func (a *FeedsAPI) Unfavourite(id, service string) (json.RawMessage, error) {
-	data, err := a.c.do("POST", "/statuses/"+id+"/unfavourite", svcParams(service), nil)
+func (a *FeedsAPI) Unfavourite(id string, service ...string) (json.RawMessage, error) {
+	params, err := svcParams(service)
+	if err != nil {
+		return nil, err
+	}
+	data, err := a.c.do("POST", "/statuses/"+id+"/unfavourite", params, nil)
 	return json.RawMessage(data), err
 }
 
-func (a *FeedsAPI) Boost(id, service string) (json.RawMessage, error) {
-	data, err := a.c.do("POST", "/statuses/"+id+"/reblog", svcParams(service), nil)
+func (a *FeedsAPI) Boost(id string, service ...string) (json.RawMessage, error) {
+	params, err := svcParams(service)
+	if err != nil {
+		return nil, err
+	}
+	data, err := a.c.do("POST", "/statuses/"+id+"/reblog", params, nil)
 	return json.RawMessage(data), err
 }
 
-func (a *FeedsAPI) Unboost(id, service string) (json.RawMessage, error) {
-	data, err := a.c.do("POST", "/statuses/"+id+"/unreblog", svcParams(service), nil)
+func (a *FeedsAPI) Unboost(id string, service ...string) (json.RawMessage, error) {
+	params, err := svcParams(service)
+	if err != nil {
+		return nil, err
+	}
+	data, err := a.c.do("POST", "/statuses/"+id+"/unreblog", params, nil)
 	return json.RawMessage(data), err
 }
 
-func (a *FeedsAPI) Bookmark(id, service string) (json.RawMessage, error) {
-	data, err := a.c.do("POST", "/statuses/"+id+"/bookmark", svcParams(service), nil)
+func (a *FeedsAPI) Bookmark(id string, service ...string) (json.RawMessage, error) {
+	params, err := svcParams(service)
+	if err != nil {
+		return nil, err
+	}
+	data, err := a.c.do("POST", "/statuses/"+id+"/bookmark", params, nil)
 	return json.RawMessage(data), err
 }
 
-func (a *FeedsAPI) Unbookmark(id, service string) (json.RawMessage, error) {
-	data, err := a.c.do("POST", "/statuses/"+id+"/unbookmark", svcParams(service), nil)
+func (a *FeedsAPI) Unbookmark(id string, service ...string) (json.RawMessage, error) {
+	params, err := svcParams(service)
+	if err != nil {
+		return nil, err
+	}
+	data, err := a.c.do("POST", "/statuses/"+id+"/unbookmark", params, nil)
 	return json.RawMessage(data), err
 }
 
-func (a *FeedsAPI) DeletePost(id, service string) error {
-	_, err := a.c.do("DELETE", "/statuses/"+id, svcParams(service), nil)
+func (a *FeedsAPI) DeletePost(id string, service ...string) error {
+	params, err := svcParams(service)
+	if err != nil {
+		return err
+	}
+	_, err = a.c.do("DELETE", "/statuses/"+id, params, nil)
 	return err
 }
 
@@ -372,12 +409,20 @@ func (a *AccountAPI) UpdateLink(id string, link interface{}) (json.RawMessage, e
 	return a.c.put("/account/links/"+id, link)
 }
 func (a *AccountAPI) DeleteLink(id string) error { return a.c.del("/account/links/" + id) }
-func (a *AccountAPI) Follow(accountId, service string) (json.RawMessage, error) {
-	data, err := a.c.do("POST", "/accounts/"+accountId+"/follow", svcParams(service), nil)
+func (a *AccountAPI) Follow(accountId string, service ...string) (json.RawMessage, error) {
+	params, err := svcParams(service)
+	if err != nil {
+		return nil, err
+	}
+	data, err := a.c.do("POST", "/accounts/"+accountId+"/follow", params, nil)
 	return json.RawMessage(data), err
 }
-func (a *AccountAPI) Unfollow(accountId, service string) (json.RawMessage, error) {
-	data, err := a.c.do("POST", "/accounts/"+accountId+"/unfollow", svcParams(service), nil)
+func (a *AccountAPI) Unfollow(accountId string, service ...string) (json.RawMessage, error) {
+	params, err := svcParams(service)
+	if err != nil {
+		return nil, err
+	}
+	data, err := a.c.do("POST", "/accounts/"+accountId+"/unfollow", params, nil)
 	return json.RawMessage(data), err
 }
 func (a *AccountAPI) GetConnectedApps() (json.RawMessage, error) { return a.c.get("/account/connected-apps", nil) }
