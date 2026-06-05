@@ -146,14 +146,17 @@ pip install claude-agent-sdk
 ```
 
 ```python
+import asyncio
 from surf_api.agent import SurfAgent
 
-agent = SurfAgent(surf_api_key="surf_sk_live_your_token")
+async def main():
+    agent = SurfAgent(surf_api_key="surf_sk_live_your_token")
+    result = await agent.run(
+        "Find the top AI feeds on Surf and summarize the latest posts"
+    )
+    print(result.text)
 
-result = await agent.run(
-    "Find the top AI feeds on Surf and summarize the latest posts"
-)
-print(result.text)
+asyncio.run(main())
 ```
 
 The agent connects to Surf via MCP and has access to 23 tools: search feeds/posts/accounts, summarize content, extract articles, create custom feeds, post to the social web, and more. All Claude compute runs on your [Agent SDK credit](https://developers.surf.social/devportal/v1/getting-started#mcp-integration-claude--ai-agents).

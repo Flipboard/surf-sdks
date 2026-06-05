@@ -19,7 +19,7 @@ Example::
     result = await agent.run(
         "Find the top AI feeds on Surf and summarize the latest posts"
     )
-    print(result)
+    print(result.text)
 
     # With budget control
     result = await agent.run(
@@ -32,7 +32,7 @@ Example::
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import AsyncIterator
+from typing import AsyncIterator, Optional
 
 MCP_SERVER_URL = "https://mcp.surf.social/mcp"
 
@@ -81,7 +81,7 @@ class SurfAgentResult:
     text: str
     messages: list
     turns: int
-    stop_reason: str | None = None
+    stop_reason: Optional[str] = None
 
 
 @dataclass
@@ -97,24 +97,53 @@ class SurfAgent:
         mcp_server_url: Surf MCP server URL. Defaults to production.
         max_turns: Default max agent turns per run. Can be overridden per call.
         max_budget_usd: Default max spend per run. Can be overridden per call.
+        allow_writes: Allow write tools (create_post, save_custom_feed, etc.).
+            Defaults to False -- only read-only tools are permitted. Set to True
+            to enable posting, favouriting, and feed creation/modification.
     """
     surf_api_key: str
     model: str = "claude-sonnet-4-6"
     system_prompt: str = SYSTEM_PROMPT
     mcp_server_url: str = MCP_SERVER_URL
-    max_turns: int | None = None
-    max_budget_usd: float | None = None
+    max_turns: Optional[int] = None
+    max_budget_usd: Optional[float] = None
+    allow_writes: bool = False
+
+    # Read-only tools are always allowed
+    _READ_TOOLS = [
+        "mcp__surf__search_surf_feeds", "mcp__surf__search_posts",
+        "mcp__surf__search_accounts", "mcp__surf__search_bluesky_users",
+        "mcp__surf__search_podcasts", "mcp__surf__get_feed_posts",
+        "mcp__surf__get_feed_details", "mcp__surf__get_trending_feeds",
+        "mcp__surf__get_account", "mcp__surf__get_my_feeds",
+        "mcp__surf__summarize_feed", "mcp__surf__ask_about_content",
+        "mcp__surf__ask_surf", "mcp__surf__ask_nlweb_agent",
+        "mcp__surf__resolve_url", "mcp__surf__extract_article",
+        "mcp__surf__get_image_info", "mcp__surf__text_to_speech",
+        "mcp__surf__build_custom_feed",
+    ]
+    # Write tools require allow_writes=True
+    _WRITE_TOOLS = [
+        "mcp__surf__create_post", "mcp__surf__favourite_post",
+        "mcp__surf__save_custom_feed", "mcp__surf__set_feed_theme",
+    ]
+
+    def _get_allowed_tools(self) -> list:
+        tools = list(self._READ_TOOLS)
+        if self.allow_writes:
+            tools.extend(self._WRITE_TOOLS)
+        return tools
 
     async def run(
         self,
         prompt: str,
         *,
-        max_turns: int | None = None,
-        max_budget_usd: float | None = None,
+        max_turns: Optional[int] = None,
+        max_budget_usd: Optional[float] = None,
     ) -> SurfAgentResult:
         """Run a one-shot agent query.
 
-        The agent connects to Surf via MCP and can use any of the 8 Surf
+        The agent connects to Surf via MCP and can use the available Surf
         tools to fulfill the request. All Claude compute runs on your
         Agent SDK credit.
 
@@ -150,7 +179,7 @@ class SurfAgent:
                 },
             },
             permission_mode="auto",
-            allowed_tools=["mcp__surf__*"],
+            allowed_tools=self._get_allowed_tools(),
         )
 
         messages = []
@@ -186,8 +215,8 @@ class SurfAgent:
         self,
         prompt: str,
         *,
-        max_turns: int | None = None,
-        max_budget_usd: float | None = None,
+        max_turns: Optional[int] = None,
+        max_budget_usd: Optional[float] = None,
     ) -> AsyncIterator:
         """Stream agent messages as they arrive.
 
@@ -225,7 +254,7 @@ class SurfAgent:
                 },
             },
             permission_mode="auto",
-            allowed_tools=["mcp__surf__*"],
+            allowed_tools=self._get_allowed_tools(),
         )
 
         async for message in query(prompt=prompt, options=options):

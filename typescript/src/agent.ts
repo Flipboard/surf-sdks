@@ -73,6 +73,11 @@ export interface SurfAgentOptions {
   maxTurns?: number;
   /** Default max spend per run in USD. */
   maxBudgetUsd?: number;
+  /**
+   * Allow write tools (create_post, save_custom_feed, favourite_post, set_feed_theme).
+   * Defaults to false -- only read-only tools are permitted.
+   */
+  allowWrites?: boolean;
 }
 
 export interface SurfAgentResult {
@@ -86,6 +91,24 @@ export interface SurfAgentResult {
   stopReason: string | undefined;
 }
 
+const READ_TOOLS = [
+  'mcp__surf__search_surf_feeds', 'mcp__surf__search_posts',
+  'mcp__surf__search_accounts', 'mcp__surf__search_bluesky_users',
+  'mcp__surf__search_podcasts', 'mcp__surf__get_feed_posts',
+  'mcp__surf__get_feed_details', 'mcp__surf__get_trending_feeds',
+  'mcp__surf__get_account', 'mcp__surf__get_my_feeds',
+  'mcp__surf__summarize_feed', 'mcp__surf__ask_about_content',
+  'mcp__surf__ask_surf', 'mcp__surf__ask_nlweb_agent',
+  'mcp__surf__resolve_url', 'mcp__surf__extract_article',
+  'mcp__surf__get_image_info', 'mcp__surf__text_to_speech',
+  'mcp__surf__build_custom_feed',
+];
+
+const WRITE_TOOLS = [
+  'mcp__surf__create_post', 'mcp__surf__favourite_post',
+  'mcp__surf__save_custom_feed', 'mcp__surf__set_feed_theme',
+];
+
 export class SurfAgent {
   private surfApiKey: string;
   private model: string;
@@ -93,6 +116,7 @@ export class SurfAgent {
   private mcpServerUrl: string;
   private maxTurns: number | undefined;
   private maxBudgetUsd: number | undefined;
+  private allowWrites: boolean;
 
   constructor(options: SurfAgentOptions) {
     this.surfApiKey = options.surfApiKey;
@@ -101,9 +125,11 @@ export class SurfAgent {
     this.mcpServerUrl = options.mcpServerUrl ?? MCP_SERVER_URL;
     this.maxTurns = options.maxTurns;
     this.maxBudgetUsd = options.maxBudgetUsd;
+    this.allowWrites = options.allowWrites ?? false;
   }
 
   private getQueryOptions(overrides?: { maxTurns?: number; maxBudgetUsd?: number }) {
+    const allowedTools = this.allowWrites ? [...READ_TOOLS, ...WRITE_TOOLS] : [...READ_TOOLS];
     return {
       model: this.model,
       systemPrompt: this.systemPrompt,
@@ -119,14 +145,14 @@ export class SurfAgent {
         },
       },
       permissionMode: 'auto' as const,
-      allowedTools: ['mcp__surf__*'],
+      allowedTools,
     };
   }
 
   /**
    * Run a one-shot agent query.
    *
-   * The agent connects to Surf via MCP and can use any of the 8 Surf
+   * The agent connects to Surf via MCP and can use the available Surf
    * tools to fulfill the request. All Claude compute runs on your
    * Agent SDK credit.
    */
