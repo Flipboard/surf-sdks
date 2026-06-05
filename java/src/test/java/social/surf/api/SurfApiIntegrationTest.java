@@ -361,9 +361,10 @@ class SurfApiIntegrationTest {
         CustomFeed feed = withRateLimitRetry(
                 () -> client.customFeeds.get(themedFeedId));
         assertNotNull(feed, "GET should return the feed");
-        // The theme_options should be present in features (round-tripped from theme)
-        assertNotNull(feed.features(), "Feed should have features");
-        assertNotNull(feed.features().themeOptions(), "Feed features should have theme_options");
+        // The DevApiThemeFilter translates features.theme_options into a top-level theme object
+        assertNotNull(feed.theme(), "Feed should have theme");
+        assertNotNull(feed.theme().get("header"), "Theme should have header");
+        assertNotNull(feed.theme().get("colors"), "Theme should have colors");
     }
 
     @Test
