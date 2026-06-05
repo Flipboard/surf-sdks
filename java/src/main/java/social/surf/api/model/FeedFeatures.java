@@ -4,7 +4,6 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.List;
-import java.util.Map;
 
 /**
  * Feature/display toggles for a feed.
@@ -15,7 +14,6 @@ import java.util.Map;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record FeedFeatures(
         @JsonProperty("theme") String theme,
-        @JsonProperty("theme_options") Map<String, Map<String, String>> themeOptions,
         @JsonProperty("topic_grouped") Boolean topicGrouped,
         @JsonProperty("tag_grouped") Boolean tagGrouped,
         @JsonProperty("news_clustered") Boolean newsClustered,
