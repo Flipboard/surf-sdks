@@ -693,6 +693,131 @@ class _PreferencesAPI:
 # Custom Feeds
 # ==========================================================================
 
+class FeedTheme:
+    """Helper to build a feed theme for create/update operations.
+
+    Uses semantic color names (``surface``, ``surfaceHeader``, ``surfaceCard``,
+    ``onSurface``, ``onHeader``, ``accent``) and separates header/image concerns
+    from color concerns.
+
+    Example::
+
+        theme = FeedTheme(
+            header_image="https://cdn.example.com/logo.png",
+            header_image_size={"width": 600, "height": 272},
+            surface="#EFEADD",
+            surface_header="#005F5F",
+        )
+        client.custom_feeds.create("My Feed", theme=theme)
+    """
+
+    def __init__(
+        self,
+        # Header
+        header_image: str = None,
+        header_image_dark: str = None,
+        header_image_size: dict = None,
+        header_image_padding: dict = None,
+        layout: str = None,
+        responsive_compact_image_size: dict = None,
+        responsive_compact_image_padding: dict = None,
+        # Colors — light
+        surface: str = None,
+        surface_header: str = None,
+        surface_card: str = None,
+        on_surface: str = None,
+        on_header: str = None,
+        accent: str = None,
+        extra_light: dict = None,
+        # Colors — dark
+        surface_dark: str = None,
+        surface_header_dark: str = None,
+        surface_card_dark: str = None,
+        on_surface_dark: str = None,
+        on_header_dark: str = None,
+        accent_dark: str = None,
+        extra_dark: dict = None,
+    ):
+        self.header_image = header_image
+        self.header_image_dark = header_image_dark
+        self.header_image_size = header_image_size
+        self.header_image_padding = header_image_padding
+        self.layout = layout
+        self.responsive_compact_image_size = responsive_compact_image_size
+        self.responsive_compact_image_padding = responsive_compact_image_padding
+        self.surface = surface
+        self.surface_header = surface_header
+        self.surface_card = surface_card
+        self.on_surface = on_surface
+        self.on_header = on_header
+        self.accent = accent
+        self.extra_light = extra_light
+        self.surface_dark = surface_dark
+        self.surface_header_dark = surface_header_dark
+        self.surface_card_dark = surface_card_dark
+        self.on_surface_dark = on_surface_dark
+        self.on_header_dark = on_header_dark
+        self.accent_dark = accent_dark
+        self.extra_dark = extra_dark
+
+    def to_dict(self) -> dict:
+        """Convert to the ``theme`` dict accepted by the API."""
+        theme = {}
+
+        # Header
+        header = {}
+        if self.header_image:
+            header["image"] = self.header_image
+        if self.header_image_dark:
+            header["imageDark"] = self.header_image_dark
+        if self.header_image_size:
+            header["imageSize"] = self.header_image_size
+        if self.header_image_padding:
+            header["imagePadding"] = self.header_image_padding
+        if self.layout:
+            header["layout"] = self.layout
+        if self.responsive_compact_image_size or self.responsive_compact_image_padding:
+            compact = {}
+            if self.responsive_compact_image_size:
+                compact["imageSize"] = self.responsive_compact_image_size
+            if self.responsive_compact_image_padding:
+                compact["imagePadding"] = self.responsive_compact_image_padding
+            header["responsive"] = {"compact": compact}
+        if header:
+            theme["header"] = header
+
+        # Colors
+        colors = {}
+        light = {}
+        for attr, key in [("surface", "surface"), ("surface_header", "surfaceHeader"),
+                          ("surface_card", "surfaceCard"), ("on_surface", "onSurface"),
+                          ("on_header", "onHeader"), ("accent", "accent")]:
+            val = getattr(self, attr)
+            if val:
+                light[key] = val
+        if self.extra_light:
+            light.update(self.extra_light)
+        if light:
+            colors["light"] = light
+
+        dark = {}
+        for attr, key in [("surface_dark", "surface"), ("surface_header_dark", "surfaceHeader"),
+                          ("surface_card_dark", "surfaceCard"), ("on_surface_dark", "onSurface"),
+                          ("on_header_dark", "onHeader"), ("accent_dark", "accent")]:
+            val = getattr(self, attr)
+            if val:
+                dark[key] = val
+        if self.extra_dark:
+            dark.update(self.extra_dark)
+        if dark:
+            colors["dark"] = dark
+
+        if colors:
+            theme["colors"] = colors
+
+        return theme
+
+
 class _CustomFeedsAPI:
     """Custom feed operations (write:feeds scope).
 
@@ -710,18 +835,43 @@ class _CustomFeedsAPI:
         """Get a custom feed by ID."""
         return self._c._get(f"/custom/{feed_id}")
 
-    def create(self, title: str, description: str = None, operators: list = None) -> dict:
-        """Create a new custom feed."""
+    def create(self, title: str, description: str = None, operators: list = None,
+               theme: FeedTheme = None, image: str = None) -> dict:
+        """Create a new custom feed.
+
+        Args:
+            title: Feed title (required).
+            description: Feed description.
+            operators: List of operator dicts defining feed sources.
+            theme: Optional FeedTheme to set the feed's visual appearance.
+            image: Optional cover image URL (used for share cards / OG tags).
+        """
         body = {"title": title}
         if description:
             body["description"] = description
         if operators:
             body["operators"] = operators
+        if image:
+            body["image"] = image
+        if theme:
+            body["theme"] = theme.to_dict()
         return self._c._post("/custom", json=body)
 
-    def update(self, feed_id: str, **kwargs) -> dict:
-        """Update a custom feed."""
-        return self._c._put(f"/custom/{feed_id}", json=kwargs)
+    def update(self, feed_id: str, theme: FeedTheme = None, **kwargs) -> dict:
+        """Update a custom feed.
+
+        This is a full-replace operation — omitted fields are cleared.
+        Always re-send the complete state you want to preserve.
+
+        Args:
+            feed_id: The feed ID.
+            theme: Optional FeedTheme to set/update the visual theme.
+            **kwargs: Other fields (title, description, visibility, tags, image).
+        """
+        body = dict(kwargs)
+        if theme:
+            body["theme"] = theme.to_dict()
+        return self._c._put(f"/custom/{feed_id}", json=body)
 
     def delete(self, feed_id: str) -> dict:
         """Delete a custom feed."""

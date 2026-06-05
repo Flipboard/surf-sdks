@@ -1,8 +1,10 @@
 package social.surf.api;
 
 import social.surf.api.model.CustomFeed;
+import social.surf.api.model.FeedTheme;
 import social.surf.api.model.NewFeedOperator;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -68,9 +70,42 @@ public class CustomFeedsApi {
         return c.postAs("/custom", map("title", title, "description", description, "operators", operators), CustomFeed.class);
     }
 
+    /**
+     * Create a new custom feed with a visual theme.
+     *
+     * <pre>{@code
+     * FeedTheme theme = FeedTheme.builder()
+     *     .headerImage("https://cdn.example.com/logo.png")
+     *     .headerImageSize(600, 272)
+     *     .surface("#EFEADD")
+     *     .surfaceHeader("#005F5F")
+     *     .build();
+     * client.customFeeds.createWithTheme("My Feed", "Description", theme);
+     * }</pre>
+     */
+    public CustomFeed createWithTheme(String title, String description, FeedTheme theme) {
+        var body = new LinkedHashMap<String, Object>();
+        body.put("title", title);
+        if (description != null) body.put("description", description);
+        if (theme != null) body.put("theme", theme.toMap());
+        return c.postAs("/custom", body, CustomFeed.class);
+    }
+
     /** Update a custom feed. */
     public CustomFeed update(String feedId, Map<String, Object> fields) {
         return c.putAs("/custom/" + feedId, fields, CustomFeed.class);
+    }
+
+    /**
+     * Update a custom feed with a visual theme.
+     *
+     * <p>This is a full-replace operation — omitted fields are cleared.
+     * Always re-send the complete state you want to preserve.
+     */
+    public CustomFeed update(String feedId, Map<String, Object> fields, FeedTheme theme) {
+        var body = new LinkedHashMap<>(fields);
+        if (theme != null) body.put("theme", theme.toMap());
+        return c.putAs("/custom/" + feedId, body, CustomFeed.class);
     }
 
     /** Delete a custom feed. */

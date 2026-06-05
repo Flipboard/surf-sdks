@@ -12,6 +12,7 @@ import social.surf.api.model.CustomFeed;
 import social.surf.api.model.Feed;
 import social.surf.api.model.FeedOperator;
 import social.surf.api.model.FeedSummary;
+import social.surf.api.model.FeedTheme;
 import social.surf.api.model.NewFeedOperator;
 
 import java.util.List;
@@ -66,6 +67,12 @@ class SurfApiIntegrationTest {
         if (customFeedId != null) {
             try {
                 client.customFeeds.delete(customFeedId);
+            } catch (Exception ignored) {
+            }
+        }
+        if (themedFeedId != null) {
+            try {
+                client.customFeeds.delete(themedFeedId);
             } catch (Exception ignored) {
             }
         }
@@ -313,6 +320,63 @@ class SurfApiIntegrationTest {
             customFeedId = null; // prevent AfterAll cleanup
         } catch (SurfAPIError e) {
             customFeedId = null;
+            skipOnScopeOrAuth(e);
+        }
+    }
+
+    // ======================================================================
+    // 3b. Custom Feed Themes
+    // ======================================================================
+
+    private static String themedFeedId;
+
+    @Test
+    @Order(310)
+    void customFeedCreateWithTheme() {
+        try {
+            FeedTheme theme = FeedTheme.builder()
+                    .headerImage("https://surf.social/img/surf-logo.png")
+                    .headerImageSize(600, 272)
+                    .surface("#EFEADD")
+                    .surfaceHeader("#005F5F")
+                    .build();
+            CustomFeed feed = withRateLimitRetry(
+                    () -> client.customFeeds.createWithTheme(
+                            "Java SDK Theme Test",
+                            "Automated theme test — safe to delete",
+                            theme));
+            assertNotNull(feed, "Created themed feed should not be null");
+            assertNotNull(feed.id(), "Created themed feed should have an id");
+            themedFeedId = feed.id().replace("surf/custom/", "");
+        } catch (SurfAPIError e) {
+            skipOnScopeOrAuth(e);
+        }
+    }
+
+    @Test
+    @Order(311)
+    void customFeedGetTheme() {
+        Assumptions.assumeTrue(themedFeedId != null, "No themed feed created");
+
+        CustomFeed feed = withRateLimitRetry(
+                () -> client.customFeeds.get(themedFeedId));
+        assertNotNull(feed, "GET should return the feed");
+        // The DevApiThemeFilter translates features.theme_options into a top-level theme object
+        assertNotNull(feed.theme(), "Feed should have theme");
+        assertNotNull(feed.theme().get("header"), "Theme should have header");
+        assertNotNull(feed.theme().get("colors"), "Theme should have colors");
+    }
+
+    @Test
+    @Order(312)
+    void customFeedDeleteThemed() {
+        Assumptions.assumeTrue(themedFeedId != null, "No themed feed created");
+
+        try {
+            withRateLimitRetry(() -> client.customFeeds.delete(themedFeedId));
+            themedFeedId = null;
+        } catch (SurfAPIError e) {
+            themedFeedId = null;
             skipOnScopeOrAuth(e);
         }
     }

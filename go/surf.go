@@ -532,6 +532,103 @@ func (a *PreferencesAPI) Update(prefs interface{}) (json.RawMessage, error) {
 // Custom Feeds
 // =========================================================================
 
+// FeedTheme builds the clean theme object for create/update.
+// Uses semantic color names and separates header from color concerns.
+//
+// Example:
+//
+//	theme := surf.FeedTheme{
+//	    Header: &surf.FeedThemeHeader{
+//	        Image:     "https://cdn.example.com/logo.png",
+//	        ImageSize: map[string]interface{}{"width": 600, "height": 272},
+//	    },
+//	    Colors: &surf.FeedThemeColors{
+//	        Light: map[string]string{"surface": "#EFEADD", "surfaceHeader": "#005F5F"},
+//	    },
+//	}
+//	client.CustomFeeds.Create(map[string]interface{}{
+//	    "title": "My Feed",
+//	    "theme": theme.ToMap(),
+//	})
+type FeedTheme struct {
+	Header *FeedThemeHeader
+	Colors *FeedThemeColors
+}
+
+type FeedThemeHeader struct {
+	Image        string
+	ImageDark    string
+	ImageSize    map[string]interface{}
+	ImagePadding map[string]interface{}
+	Layout       string // "banner", "compact", or "minimal"
+	Responsive   *FeedThemeResponsive
+}
+
+type FeedThemeResponsive struct {
+	Compact *FeedThemeHeaderOverride
+}
+
+type FeedThemeHeaderOverride struct {
+	ImageSize    map[string]interface{}
+	ImagePadding map[string]interface{}
+}
+
+type FeedThemeColors struct {
+	Light map[string]string
+	Dark  map[string]string
+}
+
+// ToMap converts the theme to the map accepted by the API.
+func (t *FeedTheme) ToMap() map[string]interface{} {
+	m := map[string]interface{}{}
+	if t.Header != nil {
+		h := map[string]interface{}{}
+		if t.Header.Image != "" {
+			h["image"] = t.Header.Image
+		}
+		if t.Header.ImageDark != "" {
+			h["imageDark"] = t.Header.ImageDark
+		}
+		if t.Header.ImageSize != nil {
+			h["imageSize"] = t.Header.ImageSize
+		}
+		if t.Header.ImagePadding != nil {
+			h["imagePadding"] = t.Header.ImagePadding
+		}
+		if t.Header.Layout != "" {
+			h["layout"] = t.Header.Layout
+		}
+		if t.Header.Responsive != nil && t.Header.Responsive.Compact != nil {
+			c := map[string]interface{}{}
+			if t.Header.Responsive.Compact.ImageSize != nil {
+				c["imageSize"] = t.Header.Responsive.Compact.ImageSize
+			}
+			if t.Header.Responsive.Compact.ImagePadding != nil {
+				c["imagePadding"] = t.Header.Responsive.Compact.ImagePadding
+			}
+			if len(c) > 0 {
+				h["responsive"] = map[string]interface{}{"compact": c}
+			}
+		}
+		if len(h) > 0 {
+			m["header"] = h
+		}
+	}
+	if t.Colors != nil {
+		c := map[string]interface{}{}
+		if t.Colors.Light != nil {
+			c["light"] = t.Colors.Light
+		}
+		if t.Colors.Dark != nil {
+			c["dark"] = t.Colors.Dark
+		}
+		if len(c) > 0 {
+			m["colors"] = c
+		}
+	}
+	return m
+}
+
 // CustomFeedsAPI provides custom feed CRUD and operator management.
 type CustomFeedsAPI struct{ c *Client }
 

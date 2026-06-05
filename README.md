@@ -76,7 +76,7 @@ Feed feed = client.feeds.get("surf/topic/technology");
 |----------|-------------|
 | **Feeds** | Browse topic feeds, trending posts, timelines across Mastodon, Bluesky, and RSS |
 | **Search** | Full-text search for feeds, posts, accounts, and podcasts |
-| **Custom Feeds** | Create personalized feeds from topics, hashtags, accounts, and RSS sources |
+| **Custom Feeds** | Create personalized feeds from topics, hashtags, accounts, and RSS sources — with optional visual theming (header image, semantic colors, light/dark mode, responsive overrides) |
 | **AI** | Ask questions about feeds, generate summaries, build feeds from natural language |
 | **Content** | Resolve URLs, extract articles, detect language, analyze images |
 | **Audio** | Text-to-speech, radio stations, podcasts, daily briefings |

@@ -6,6 +6,14 @@ All notable changes to the Surf API SDKs will be documented here. All SDKs share
 
 ## Unreleased
 
+### Added
+- **Feed Themes** — All SDKs now support creating and updating custom feeds with visual themes. The theme schema uses semantic color names (`surface`, `surfaceHeader`, `surfaceCard`, `onSurface`, `onHeader`, `accent`) and separates header/image configuration from color configuration, with light/dark mode and responsive compact overrides.
+  - Python: `FeedTheme` class with `to_dict()`, accepted by `create()` and `update()`
+  - TypeScript: `FeedTheme` and `FeedThemeColorPalette` interfaces, accepted by `create()` and `update()`
+  - Go: `FeedTheme` struct with `ToMap()` method
+  - Java: `FeedTheme` record with builder and `toMap()`, new `createWithTheme()` and `update(id, fields, theme)` overloads
+  - Java: `FeedFeatures` now includes `themeOptions` field for response deserialization
+
 ### Changed
 - Python: Integration tests now live in `python/tests/` and use the SDK client directly (no external repo dependency)
 - Test harness (`run_all.sh`) runs Python tests from the SDK repo instead of py-services

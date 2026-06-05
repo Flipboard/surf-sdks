@@ -241,6 +241,83 @@ describe('Custom Feeds', { concurrency: false }, () => {
 });
 
 // ---------------------------------------------------------------------------
+// 3b. Custom Feed Themes
+// ---------------------------------------------------------------------------
+
+describe('Custom Feed Themes', { concurrency: false }, () => {
+  let feedId: string | null = null;
+  let skipped = false;
+
+  it('should create a themed custom feed', async () => {
+    try {
+      const result: any = await client.customFeeds.create({
+        title: 'SDK Theme Test Feed',
+        description: 'Automated theme test -- safe to delete',
+        theme: {
+          header: {
+            image: 'https://surf.social/img/surf-logo.png',
+            imageSize: { width: 600, height: 272 },
+          },
+          colors: {
+            light: { surface: '#EFEADD', surfaceHeader: '#005F5F' },
+          },
+        },
+      });
+      const rawId: string = result?.id ?? result?.surfId ?? '';
+      feedId = rawId.replace('surf/custom/', '');
+      assert.ok(feedId, 'Should return a feed ID');
+      assert.ok(result.theme, 'Response should include theme');
+      assert.strictEqual(result.theme.header?.image, 'https://surf.social/img/surf-logo.png');
+      assert.strictEqual(result.theme.colors?.light?.surface, '#EFEADD');
+      assert.strictEqual(result.theme.colors?.light?.surfaceHeader, '#005F5F');
+    } catch (err) {
+      if (isScopeOrAuth(err)) {
+        skipped = true;
+        console.log('  [skip] Token lacks write:feeds scope');
+        return;
+      }
+      throw err;
+    }
+  });
+
+  it('should round-trip theme on GET', async () => {
+    if (skipped || !feedId) return;
+    const feed: any = await client.customFeeds.get(feedId);
+    assert.ok(feed.theme, 'GET response should include theme');
+    assert.strictEqual(feed.theme.header?.image, 'https://surf.social/img/surf-logo.png');
+  });
+
+  it('should update theme', async () => {
+    if (skipped || !feedId) return;
+    const result: any = await client.customFeeds.update(feedId, {
+      title: 'SDK Theme Updated',
+      theme: {
+        header: {
+          image: 'https://surf.social/img/surf-logo.png',
+          imageSize: { width: 400, height: 200 },
+        },
+        colors: {
+          light: { surface: '#1D1B1C', surfaceHeader: '#123535' },
+        },
+      },
+    });
+    assert.ok(result.theme, 'Updated response should include theme');
+    assert.strictEqual(result.theme.colors?.light?.surface, '#1D1B1C');
+  });
+
+  after(async () => {
+    if (feedId) {
+      try {
+        await client.customFeeds.delete(feedId);
+        console.log(`  [cleanup] Deleted themed feed ${feedId}`);
+      } catch {
+        console.log(`  [cleanup] Could not delete themed feed ${feedId}`);
+      }
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // 4. Write Ops (Mastodon)
 // ---------------------------------------------------------------------------
 

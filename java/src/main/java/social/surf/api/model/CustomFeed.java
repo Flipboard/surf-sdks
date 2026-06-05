@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * A user-created custom feed.
@@ -29,6 +30,7 @@ public record CustomFeed(
         @JsonProperty("visibility") String visibility,
         @JsonProperty("version") Integer version,
         @JsonProperty("features") FeedFeatures features,
+        @JsonProperty("theme") Map<String, Object> theme,
         @JsonProperty("created") Long created,
         @JsonProperty("last_modified") Long lastModified,
         @JsonProperty("locked") Boolean locked,
