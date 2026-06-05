@@ -156,7 +156,7 @@ result = await agent.run(
 print(result.text)
 ```
 
-The agent connects to Surf via MCP and has access to 8 tools: search feeds, get posts, create custom feeds, search Bluesky users, and more. All Claude compute runs on your [Agent SDK credit](https://developers.surf.social/devportal/v1/getting-started#mcp-integration-claude--ai-agents).
+The agent connects to Surf via MCP and has access to 23 tools: search feeds/posts/accounts, summarize content, extract articles, create custom feeds, post to the social web, and more. All Claude compute runs on your [Agent SDK credit](https://developers.surf.social/devportal/v1/getting-started#mcp-integration-claude--ai-agents).
 
 ## MCP Integration
 

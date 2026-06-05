@@ -10,7 +10,7 @@ All notable changes to the Surf API SDKs will be documented here. All SDKs share
 - **SurfAgent** -- AI agent with Surf MCP tools pre-loaded, powered by the Claude Agent SDK. Available in **Python and TypeScript only** (Go and Java do not include agent functionality).
   - Python: `SurfAgent` class in `surf_api.agent` with `run()` and `stream()` methods
   - TypeScript: `SurfAgent` class exported from `@surf/api` with `run()` and `stream()` methods
-  - Pre-configured MCP connection to `mcp.surf.social` with all 8 Surf tools
+  - Pre-configured MCP connection to `mcp.surf.social` with all 23 Surf tools
   - Budget controls via `max_turns` / `max_budget_usd` (Python) or `maxTurns` / `maxBudgetUsd` (TypeScript)
   - Lazy import of Agent SDK -- does not require `claude-agent-sdk` / `@anthropic-ai/claude-agent-sdk` unless `SurfAgent` is used
 
