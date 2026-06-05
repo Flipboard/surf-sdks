@@ -29,6 +29,7 @@ __version__ = "1.0.0"
 __all__ = [
     "SurfClient",
     "AsyncSurfClient",
+    "SurfAgent",
     "SurfOAuth",
     "AsyncSurfOAuth",
     "SurfAPIError",
@@ -59,6 +60,9 @@ def __getattr__(name):
     if name == "AsyncSurfClient":
         from .async_client import AsyncSurfClient
         return AsyncSurfClient
+    if name == "SurfAgent":
+        from .agent import SurfAgent
+        return SurfAgent
     if name in ("SurfOAuth", "AsyncSurfOAuth", "generate_pkce"):
         from . import oauth
         return getattr(oauth, name)

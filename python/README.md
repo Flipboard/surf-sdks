@@ -137,6 +137,27 @@ client = SurfClient(
 )
 ```
 
+## AI Agent
+
+Build autonomous agents that interact with the social web. Requires `claude-agent-sdk`:
+
+```bash
+pip install claude-agent-sdk
+```
+
+```python
+from surf_api.agent import SurfAgent
+
+agent = SurfAgent(surf_api_key="surf_sk_live_your_token")
+
+result = await agent.run(
+    "Find the top AI feeds on Surf and summarize the latest posts"
+)
+print(result.text)
+```
+
+The agent connects to Surf via MCP and has access to 8 tools: search feeds, get posts, create custom feeds, search Bluesky users, and more. All Claude compute runs on your [Agent SDK credit](https://developers.surf.social/devportal/v1/getting-started#mcp-integration-claude--ai-agents).
+
 ## MCP Integration
 
 The Surf API is also available as an [MCP server](https://mcp.surf.social/mcp) for Claude Code and other MCP-compatible clients. See the [API documentation](https://developers.surf.social/devportal/v1/api-docs) for details.

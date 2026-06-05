@@ -30,6 +30,8 @@ import type {
 export * from './types';
 export { SurfOAuth, generatePKCE } from './oauth';
 export type { SurfOAuthOptions, AuthorizeUrlResult, OAuthTokens } from './oauth';
+export { SurfAgent } from './agent';
+export type { SurfAgentOptions, SurfAgentResult } from './agent';
 
 const DEFAULT_BASE_URL = 'https://api.surf.social';
 const API_PREFIX = '/v1';
