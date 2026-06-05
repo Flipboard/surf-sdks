@@ -374,6 +374,103 @@ func TestIntegration(t *testing.T) {
 	})
 
 	// =====================================================================
+	// 3b. Custom Feed Themes
+	// =====================================================================
+	t.Run("CustomFeedThemes", func(t *testing.T) {
+		var feedID string
+
+		t.Run("CreateWithTheme", func(t *testing.T) {
+			theme := FeedTheme{
+				Header: &FeedThemeHeader{
+					Image:     "https://surf.social/img/surf-logo.png",
+					ImageSize: map[string]interface{}{"width": 600, "height": 272},
+				},
+				Colors: &FeedThemeColors{
+					Light: map[string]string{"surface": "#EFEADD", "surfaceHeader": "#005F5F"},
+				},
+			}
+			var raw json.RawMessage
+			err := retryOnRateLimit(t, func() error {
+				var e error
+				raw, e = client.CustomFeeds.Create(map[string]interface{}{
+					"title":       "Go SDK Theme Test",
+					"description": "Automated theme test — safe to delete",
+					"theme":       theme.ToMap(),
+				})
+				return e
+			})
+			skipOnScope(t, err, "Token lacks write:feeds scope")
+			if err != nil {
+				t.Fatalf("CustomFeeds.Create with theme failed: %v", err)
+			}
+			var e error
+			feedID, e = extractFeedID(raw)
+			if e != nil {
+				t.Fatalf("Could not extract feed ID: %v", e)
+			}
+			// Verify theme in response
+			var resp map[string]interface{}
+			if err := json.Unmarshal(raw, &resp); err != nil {
+				t.Fatalf("Failed to parse response: %v", err)
+			}
+			themeResp, ok := resp["theme"].(map[string]interface{})
+			if !ok {
+				t.Fatal("Response should include theme object")
+			}
+			header, _ := themeResp["header"].(map[string]interface{})
+			if header == nil || header["image"] != "https://surf.social/img/surf-logo.png" {
+				t.Errorf("Expected header image in response, got: %v", header)
+			}
+		})
+
+		t.Cleanup(func() {
+			if feedID == "" {
+				return
+			}
+			_ = client.CustomFeeds.Delete(feedID)
+		})
+
+		t.Run("GetTheme", func(t *testing.T) {
+			if feedID == "" {
+				t.Skip("No themed feed created")
+			}
+			var raw json.RawMessage
+			err := retryOnRateLimit(t, func() error {
+				var e error
+				raw, e = client.CustomFeeds.Get(feedID)
+				return e
+			})
+			if err != nil {
+				t.Fatalf("GET failed: %v", err)
+			}
+			var resp map[string]interface{}
+			if err := json.Unmarshal(raw, &resp); err != nil {
+				t.Fatalf("Failed to parse: %v", err)
+			}
+			if resp["theme"] == nil {
+				t.Fatal("GET response should include theme")
+			}
+		})
+
+		t.Run("Delete", func(t *testing.T) {
+			if feedID == "" {
+				t.Skip("No themed feed created")
+			}
+			err := retryOnRateLimit(t, func() error {
+				return client.CustomFeeds.Delete(feedID)
+			})
+			if err != nil {
+				var apiErr *APIError
+				if errors.As(err, &apiErr) && apiErr.StatusCode == 404 {
+					return
+				}
+				t.Fatalf("Delete failed: %v", err)
+			}
+			feedID = ""
+		})
+	})
+
+	// =====================================================================
 	// 4. Write Ops (Mastodon)
 	// =====================================================================
 	t.Run("WriteOpsMastodon", func(t *testing.T) {

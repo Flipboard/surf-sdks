@@ -429,16 +429,75 @@ class PreferencesAPI {
 // Custom Feeds
 // ==========================================================================
 
+/**
+ * Feed theme configuration using semantic color names.
+ *
+ * Separates header/image concerns from color concerns. Color names describe
+ * purpose (`surface`, `surfaceCard`) rather than components (`feedBackground`,
+ * `postBackground`), so they survive client redesigns.
+ *
+ * @example
+ * ```ts
+ * const theme: FeedTheme = {
+ *   header: {
+ *     image: 'https://cdn.example.com/logo.png',
+ *     imageSize: { width: 600, height: 272 },
+ *   },
+ *   colors: {
+ *     light: { surface: '#EFEADD', surfaceHeader: '#005F5F' },
+ *   },
+ * };
+ * client.customFeeds.create({ title: 'My Feed', theme });
+ * ```
+ */
+export interface FeedTheme {
+  header?: {
+    image?: string;
+    imageDark?: string;
+    imageSize?: { width: number; height: number };
+    imagePadding?: { top?: number; bottom?: number };
+    layout?: 'banner' | 'compact' | 'minimal';
+    responsive?: {
+      compact?: {
+        imageSize?: { width: number; height: number };
+        imagePadding?: { top?: number; bottom?: number };
+      };
+    };
+  };
+  colors?: {
+    light?: FeedThemeColorPalette;
+    dark?: FeedThemeColorPalette;
+  };
+}
+
+export interface FeedThemeColorPalette {
+  surface?: string;
+  surfaceHeader?: string;
+  surfaceCard?: string;
+  onSurface?: string;
+  onHeader?: string;
+  accent?: string;
+  [key: string]: string | undefined;
+}
+
 /** Custom feed CRUD and operator management. */
 class CustomFeedsAPI {
   constructor(private c: SurfClient) {}
 
   list() { return this.c._get('/custom'); }
   get(feedId: string) { return this.c._get(`/custom/${feedId}`); }
-  create(body: { title: string; description?: string; operators?: unknown[] }) {
-    return this.c._post('/custom', body);
+  create(body: { title: string; description?: string; operators?: unknown[]; image?: string; theme?: FeedTheme }) {
+    const { theme, ...rest } = body;
+    const payload: Record<string, unknown> = { ...rest };
+    if (theme) payload.theme = theme;
+    return this.c._post('/custom', payload);
   }
-  update(feedId: string, body: Record<string, unknown>) { return this.c._put(`/custom/${feedId}`, body); }
+  update(feedId: string, body: Record<string, unknown> & { theme?: FeedTheme }) {
+    const { theme, ...rest } = body;
+    const payload: Record<string, unknown> = { ...rest };
+    if (theme) payload.theme = theme;
+    return this.c._put(`/custom/${feedId}`, payload);
+  }
   delete(feedId: string) { return this.c._delete(`/custom/${feedId}`); }
   clone(feedId: string) { return this.c._post(`/custom/${feedId}/clone`); }
   publish(feedId: string) { return this.c._post(`/custom/${feedId}/publish`); }

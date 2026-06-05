@@ -78,6 +78,17 @@ client.custom_feeds.add_operator(feed["id"], {
 
 # Publish it
 client.custom_feeds.publish(feed["id"])
+
+# Create a themed feed
+from surf_api.client import FeedTheme
+
+theme = FeedTheme(
+    header_image="https://cdn.example.com/logo.png",
+    header_image_size={"width": 600, "height": 272},
+    surface="#EFEADD",
+    surface_header="#005F5F",
+)
+feed = client.custom_feeds.create("Branded Feed", theme=theme)
 ```
 
 ## Audio

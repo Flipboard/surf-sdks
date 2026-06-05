@@ -134,6 +134,70 @@ class TestCustomFeeds:
             pass  # already deleted
 
 
+class TestCustomFeedThemes:
+    feed_id = None
+
+    def test_01_create_with_theme(self, client):
+        from surf_api.client import FeedTheme
+        theme = FeedTheme(
+            header_image="https://surf.social/img/surf-logo.png",
+            header_image_size={"width": 600, "height": 272},
+            surface="#EFEADD",
+            surface_header="#005F5F",
+        )
+        result = skip_on_scope(lambda: retry_on_rate_limit(lambda: client.custom_feeds.create(
+            title=f"Theme Test {int(time.time())}",
+            description="Python SDK theme test -- safe to delete",
+            theme=theme,
+        )))
+        if result is None:
+            return
+        raw_id = result.get("id") or result.get("surfId") or ""
+        TestCustomFeedThemes.feed_id = raw_id.replace("surf/custom/", "")
+        assert TestCustomFeedThemes.feed_id
+        # Verify theme round-trips in the response
+        resp_theme = result.get("theme")
+        assert resp_theme is not None, "Response should include theme"
+        assert resp_theme.get("header", {}).get("image") == "https://surf.social/img/surf-logo.png"
+        colors = resp_theme.get("colors", {}).get("light", {})
+        assert colors.get("surface") == "#EFEADD"
+        assert colors.get("surfaceHeader") == "#005F5F"
+
+    def test_02_get_theme(self, client):
+        if not self.feed_id:
+            pytest.skip("No themed feed created")
+        feed = retry_on_rate_limit(lambda: client.custom_feeds.get(self.feed_id))
+        resp_theme = feed.get("theme")
+        assert resp_theme is not None, "GET response should include theme"
+        assert resp_theme.get("header", {}).get("image") == "https://surf.social/img/surf-logo.png"
+
+    def test_03_update_theme(self, client):
+        if not self.feed_id:
+            pytest.skip("No themed feed created")
+        from surf_api.client import FeedTheme
+        new_theme = FeedTheme(
+            header_image="https://surf.social/img/surf-logo.png",
+            header_image_size={"width": 400, "height": 200},
+            surface="#1D1B1C",
+            surface_header="#123535",
+        )
+        result = retry_on_rate_limit(lambda: client.custom_feeds.update(
+            self.feed_id, title="Theme Updated", theme=new_theme,
+        ))
+        resp_theme = result.get("theme")
+        assert resp_theme is not None
+        colors = resp_theme.get("colors", {}).get("light", {})
+        assert colors.get("surface") == "#1D1B1C"
+
+    def test_04_delete(self, client):
+        if not self.feed_id:
+            pytest.skip("No themed feed created")
+        try:
+            retry_on_rate_limit(lambda: client.custom_feeds.delete(self.feed_id))
+        except SurfNotFoundError:
+            pass
+
+
 # ---------------------------------------------------------------------------
 # Write Ops -- Mastodon
 # ---------------------------------------------------------------------------

@@ -153,6 +153,17 @@ feed = client.customFeeds.addOperator(feed.id(),
 
 // Publish it
 client.customFeeds.publish(feed.id());
+
+// Create a themed feed
+import social.surf.api.model.FeedTheme;
+
+FeedTheme theme = FeedTheme.builder()
+    .headerImage("https://cdn.example.com/logo.png")
+    .headerImageSize(Map.of("width", 600, "height", 272))
+    .surface("#EFEADD")
+    .surfaceHeader("#005F5F")
+    .build();
+client.customFeeds.createWithTheme("Branded Feed", null, theme);
 ```
 
 ## Audio
