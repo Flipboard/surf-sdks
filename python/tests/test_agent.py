@@ -48,6 +48,24 @@ def test_surf_agent_allow_writes():
     assert "mcp__surf__set_feed_theme" in tools
 
 
+def test_surf_agent_allowlist_sizes():
+    """Verify exact allowlist sizes to catch accidental changes."""
+    from surf_api.agent import SurfAgent
+    agent = SurfAgent(surf_api_key="test")
+    assert len(agent._READ_TOOLS) == 20, f"Expected 20 read tools, got {len(agent._READ_TOOLS)}"
+    assert len(agent._WRITE_TOOLS) == 4, f"Expected 4 write tools, got {len(agent._WRITE_TOOLS)}"
+    assert len(agent._get_allowed_tools()) == 20, "Default should be read-only (20 tools)"
+    agent_rw = SurfAgent(surf_api_key="test", allow_writes=True)
+    assert len(agent_rw._get_allowed_tools()) == 24, "With writes should be 24 tools"
+
+
+def test_surf_agent_ask_creator_in_read_tools():
+    """ask_creator should be in the read-only allowlist by default."""
+    from surf_api.agent import SurfAgent
+    agent = SurfAgent(surf_api_key="test")
+    assert "mcp__surf__ask_creator" in agent._get_allowed_tools()
+
+
 def test_surf_agent_run_raises_without_sdk():
     """run() raises ImportError with helpful message when claude-agent-sdk is missing."""
     import sys
