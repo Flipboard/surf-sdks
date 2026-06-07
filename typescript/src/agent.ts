@@ -39,6 +39,7 @@ Search & Discovery:
 - get_account: Look up a user profile by handle
 
 AI & Analysis:
+- ask_creator: Ask a creator's agent about their content (use when user @mentions a creator)
 - summarize_feed: Get an AI summary of a feed
 - ask_about_content: Ask questions about content
 - ask_surf: Semantic search via NLWeb
@@ -97,6 +98,7 @@ const READ_TOOLS = [
   'mcp__surf__search_podcasts', 'mcp__surf__get_feed_posts',
   'mcp__surf__get_feed_details', 'mcp__surf__get_trending_feeds',
   'mcp__surf__get_account', 'mcp__surf__get_my_feeds',
+  'mcp__surf__ask_creator',
   'mcp__surf__summarize_feed', 'mcp__surf__ask_about_content',
   'mcp__surf__ask_surf', 'mcp__surf__ask_nlweb_agent',
   'mcp__surf__resolve_url', 'mcp__surf__extract_article',
