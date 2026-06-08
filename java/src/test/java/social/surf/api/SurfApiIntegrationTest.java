@@ -22,7 +22,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * Integration tests that run against the live Surf API.
@@ -40,6 +39,7 @@ class SurfApiIntegrationTest {
 
     // State shared across ordered tests
     private static String customFeedId;
+    private static String themedFeedId;
     private static String mastodonPostId;
     private static String blueskyPostId;
 
@@ -95,45 +95,6 @@ class SurfApiIntegrationTest {
     // ------------------------------------------------------------------
 
     /**
-     * Execute a Surf API call with one retry on rate limit.
-     * If a {@link SurfRateLimitError} is thrown, sleep for the indicated
-     * retry-after duration (or 5 seconds if unspecified) and retry once.
-     */
-    @FunctionalInterface
-    interface ApiCall<T> {
-        T call();
-    }
-
-    private static <T> T withRateLimitRetry(ApiCall<T> action) {
-        try {
-            return action.call();
-        } catch (SurfRateLimitError e) {
-            int wait = 5;
-            if (e.getRetryAfter() != null) {
-                try {
-                    wait = Integer.parseInt(e.getRetryAfter());
-                } catch (NumberFormatException ignored) {
-                }
-            }
-            System.out.println("Rate limited — sleeping " + wait + "s before retry");
-            try {
-                Thread.sleep(wait * 1000L);
-            } catch (InterruptedException ie) {
-                Thread.currentThread().interrupt();
-            }
-            return action.call(); // retry once; let it throw if rate limited again
-        }
-    }
-
-    /** Void variant of withRateLimitRetry. */
-    private static void withRateLimitRetryVoid(Runnable action) {
-        withRateLimitRetry(() -> {
-            action.run();
-            return null;
-        });
-    }
-
-    /**
      * Skip the current test if the exception indicates a scope or auth error.
      */
     private static void skipOnScopeOrAuth(SurfAPIError e) {
@@ -151,7 +112,7 @@ class SurfApiIntegrationTest {
     @Test
     @Order(100)
     void feedsGetMetadata() {
-        Feed feed = withRateLimitRetry(() -> client.feeds.get("surf/topic/technology"));
+        Feed feed = client.feeds.get("surf/topic/technology");
         assertNotNull(feed, "Feed should not be null");
         assertNotNull(feed.title(), "Feed should have a title");
         assertEquals("surf/topic/technology", feed.surfId());
@@ -160,8 +121,7 @@ class SurfApiIntegrationTest {
     @Test
     @Order(101)
     void feedsGetPostsWithLimit() {
-        List<Map<String, Object>> posts = withRateLimitRetry(
-                () -> client.feeds.getPosts("surf/topic/technology", 5));
+        List<Map<String, Object>> posts = client.feeds.getPosts("surf/topic/technology", 5);
         assertNotNull(posts, "Posts list should not be null");
         assertFalse(posts.isEmpty(), "Posts list should not be empty");
         assertTrue(posts.size() <= 5, "Should respect limit of 5, got " + posts.size());
@@ -176,8 +136,7 @@ class SurfApiIntegrationTest {
     @Test
     @Order(200)
     void searchFeeds() {
-        Map<String, Object> result = withRateLimitRetry(
-                () -> client.search.feeds("technology"));
+        Map<String, Object> result = client.search.feeds("technology");
         assertNotNull(result, "Search result should not be null");
         // Response should contain feeds or results
         assertTrue(result.containsKey("feeds") || result.containsKey("results") || result.containsKey("data"),
@@ -187,16 +146,14 @@ class SurfApiIntegrationTest {
     @Test
     @Order(201)
     void searchPosts() {
-        Map<String, Object> result = withRateLimitRetry(
-                () -> client.search.posts("artificial intelligence"));
+        Map<String, Object> result = client.search.posts("artificial intelligence");
         assertNotNull(result, "Search result should not be null");
     }
 
     @Test
     @Order(202)
     void searchAccounts() {
-        Map<String, Object> result = withRateLimitRetry(
-                () -> client.search.accounts("surf"));
+        Map<String, Object> result = client.search.accounts("surf");
         assertNotNull(result, "Search result should not be null");
     }
 
@@ -208,9 +165,8 @@ class SurfApiIntegrationTest {
     @Order(300)
     void customFeedCreate() {
         try {
-            CustomFeed feed = withRateLimitRetry(
-                    () -> client.customFeeds.create("Java SDK Integration Test",
-                            "Automated test feed — safe to delete"));
+            CustomFeed feed = client.customFeeds.create("Java SDK Integration Test",
+                    "Automated test feed — safe to delete");
             assertNotNull(feed, "Created feed should not be null");
             assertNotNull(feed.id(), "Created feed should have an id");
             // Strip surf/custom/ prefix if present
@@ -226,16 +182,15 @@ class SurfApiIntegrationTest {
         Assumptions.assumeTrue(customFeedId != null, "No feed created in previous test");
         // Clean up the first feed — we'll create a new one with operators
         try {
-            withRateLimitRetry(() -> client.customFeeds.delete(customFeedId));
+            client.customFeeds.delete(customFeedId);
         } catch (Exception ignored) {
         }
 
         try {
-            CustomFeed feed = withRateLimitRetry(
-                    () -> client.customFeeds.createWithOperators(
-                            "Java SDK Operators Test",
-                            "Automated test feed with operators — safe to delete",
-                            List.of(NewFeedOperator.source("surf/topic/technology"))));
+            CustomFeed feed = client.customFeeds.createWithOperators(
+                    "Java SDK Operators Test",
+                    "Automated test feed with operators — safe to delete",
+                    List.of(NewFeedOperator.source("surf/topic/technology")));
             assertNotNull(feed, "Created feed should not be null");
             assertNotNull(feed.id(), "Created feed should have an id");
             customFeedId = feed.id().replace("surf/custom/", "");
@@ -256,21 +211,18 @@ class SurfApiIntegrationTest {
 
         try {
             // Add a topic operator
-            CustomFeed afterTopic = withRateLimitRetry(
-                    () -> client.customFeeds.addOperator(customFeedId,
-                            NewFeedOperator.source("surf/topic/science")));
+            CustomFeed afterTopic = client.customFeeds.addOperator(customFeedId,
+                    NewFeedOperator.source("surf/topic/science"));
             assertNotNull(afterTopic);
 
             // Add a hashtag operator
-            CustomFeed afterHashtag = withRateLimitRetry(
-                    () -> client.customFeeds.addOperator(customFeedId,
-                            NewFeedOperator.source("surf/hashtag/opensource")));
+            CustomFeed afterHashtag = client.customFeeds.addOperator(customFeedId,
+                    NewFeedOperator.source("surf/hashtag/opensource"));
             assertNotNull(afterHashtag);
 
             // Add a Bluesky user operator
-            CustomFeed afterBsky = withRateLimitRetry(
-                    () -> client.customFeeds.addOperator(customFeedId,
-                            NewFeedOperator.source("bluesky/user/@jay.bsky.team")));
+            CustomFeed afterBsky = client.customFeeds.addOperator(customFeedId,
+                    NewFeedOperator.source("bluesky/user/@jay.bsky.team"));
             assertNotNull(afterBsky);
         } catch (SurfAPIError e) {
             skipOnScopeOrAuth(e);
@@ -283,8 +235,7 @@ class SurfApiIntegrationTest {
         Assumptions.assumeTrue(customFeedId != null, "No feed created");
 
         try {
-            CustomFeed feed = withRateLimitRetry(
-                    () -> client.customFeeds.get(customFeedId));
+            CustomFeed feed = client.customFeeds.get(customFeedId);
             assertNotNull(feed, "Feed should not be null");
             assertEquals(customFeedId, feed.id().replace("surf/custom/", ""));
 
@@ -316,7 +267,7 @@ class SurfApiIntegrationTest {
         Assumptions.assumeTrue(customFeedId != null, "No feed created");
 
         try {
-            withRateLimitRetry(() -> client.customFeeds.delete(customFeedId));
+            client.customFeeds.delete(customFeedId);
             customFeedId = null; // prevent AfterAll cleanup
         } catch (SurfAPIError e) {
             customFeedId = null;
@@ -328,8 +279,6 @@ class SurfApiIntegrationTest {
     // 3b. Custom Feed Themes
     // ======================================================================
 
-    private static String themedFeedId;
-
     @Test
     @Order(310)
     void customFeedCreateWithTheme() {
@@ -340,11 +289,10 @@ class SurfApiIntegrationTest {
                     .surface("#EFEADD")
                     .surfaceHeader("#005F5F")
                     .build();
-            CustomFeed feed = withRateLimitRetry(
-                    () -> client.customFeeds.createWithTheme(
-                            "Java SDK Theme Test",
-                            "Automated theme test — safe to delete",
-                            theme));
+            CustomFeed feed = client.customFeeds.createWithTheme(
+                    "Java SDK Theme Test",
+                    "Automated theme test — safe to delete",
+                    theme);
             assertNotNull(feed, "Created themed feed should not be null");
             assertNotNull(feed.id(), "Created themed feed should have an id");
             themedFeedId = feed.id().replace("surf/custom/", "");
@@ -358,8 +306,7 @@ class SurfApiIntegrationTest {
     void customFeedGetTheme() {
         Assumptions.assumeTrue(themedFeedId != null, "No themed feed created");
 
-        CustomFeed feed = withRateLimitRetry(
-                () -> client.customFeeds.get(themedFeedId));
+        CustomFeed feed = client.customFeeds.get(themedFeedId);
         assertNotNull(feed, "GET should return the feed");
         // The DevApiThemeFilter translates features.theme_options into a top-level theme object
         assertNotNull(feed.theme(), "Feed should have theme");
@@ -373,7 +320,7 @@ class SurfApiIntegrationTest {
         Assumptions.assumeTrue(themedFeedId != null, "No themed feed created");
 
         try {
-            withRateLimitRetry(() -> client.customFeeds.delete(themedFeedId));
+            client.customFeeds.delete(themedFeedId);
             themedFeedId = null;
         } catch (SurfAPIError e) {
             themedFeedId = null;
@@ -389,10 +336,9 @@ class SurfApiIntegrationTest {
     @Order(400)
     void mastodonCreatePost() {
         try {
-            Map<String, Object> post = withRateLimitRetry(
-                    () -> client.feeds.createPost(
-                            "Java SDK integration test (mastodon) — " + System.currentTimeMillis() + ". Safe to delete.",
-                            "public", "mastodon"));
+            Map<String, Object> post = client.feeds.createPost(
+                    "Java SDK integration test (mastodon) — " + System.currentTimeMillis() + ". Safe to delete.",
+                    "public", "mastodon");
             assertNotNull(post, "Post response should not be null");
             mastodonPostId = String.valueOf(post.get("id"));
             assertNotNull(mastodonPostId, "Post should have an id");
@@ -406,8 +352,7 @@ class SurfApiIntegrationTest {
     void mastodonFavourite() {
         Assumptions.assumeTrue(mastodonPostId != null, "No mastodon post created");
         try {
-            Map<String, Object> result = withRateLimitRetry(
-                    () -> client.feeds.favourite(mastodonPostId, "mastodon"));
+            Map<String, Object> result = client.feeds.favourite(mastodonPostId, "mastodon");
             assertNotNull(result);
         } catch (SurfAPIError e) {
             skipOnScopeOrAuth(e);
@@ -419,8 +364,7 @@ class SurfApiIntegrationTest {
     void mastodonUnfavourite() {
         Assumptions.assumeTrue(mastodonPostId != null, "No mastodon post created");
         try {
-            Map<String, Object> result = withRateLimitRetry(
-                    () -> client.feeds.unfavourite(mastodonPostId, "mastodon"));
+            Map<String, Object> result = client.feeds.unfavourite(mastodonPostId, "mastodon");
             assertNotNull(result);
         } catch (SurfAPIError e) {
             skipOnScopeOrAuth(e);
@@ -432,7 +376,7 @@ class SurfApiIntegrationTest {
     void mastodonDeletePost() {
         Assumptions.assumeTrue(mastodonPostId != null, "No mastodon post created");
         try {
-            withRateLimitRetry(() -> client.feeds.deletePost(mastodonPostId, "mastodon"));
+            client.feeds.deletePost(mastodonPostId, "mastodon");
             mastodonPostId = null; // prevent AfterAll cleanup
         } catch (SurfAPIError e) {
             mastodonPostId = null;
@@ -448,10 +392,9 @@ class SurfApiIntegrationTest {
     @Order(500)
     void blueskyCreatePost() {
         try {
-            Map<String, Object> post = withRateLimitRetry(
-                    () -> client.feeds.createPost(
-                            "Java SDK integration test (bluesky) — " + System.currentTimeMillis() + ". Safe to delete.",
-                            "public", "bluesky"));
+            Map<String, Object> post = client.feeds.createPost(
+                    "Java SDK integration test (bluesky) — " + System.currentTimeMillis() + ". Safe to delete.",
+                    "public", "bluesky");
             assertNotNull(post, "Post response should not be null");
             blueskyPostId = String.valueOf(post.get("id"));
             assertNotNull(blueskyPostId, "Post should have an id");
@@ -465,8 +408,7 @@ class SurfApiIntegrationTest {
     void blueskyFavourite() {
         Assumptions.assumeTrue(blueskyPostId != null, "No bluesky post created");
         try {
-            Map<String, Object> result = withRateLimitRetry(
-                    () -> client.feeds.favourite(blueskyPostId, "bluesky"));
+            Map<String, Object> result = client.feeds.favourite(blueskyPostId, "bluesky");
             assertNotNull(result);
         } catch (SurfAPIError e) {
             skipOnScopeOrAuth(e);
@@ -478,7 +420,7 @@ class SurfApiIntegrationTest {
     void blueskyDeletePost() {
         Assumptions.assumeTrue(blueskyPostId != null, "No bluesky post created");
         try {
-            withRateLimitRetry(() -> client.feeds.deletePost(blueskyPostId, "bluesky"));
+            client.feeds.deletePost(blueskyPostId, "bluesky");
             blueskyPostId = null; // prevent AfterAll cleanup
         } catch (SurfAPIError e) {
             blueskyPostId = null;
@@ -494,8 +436,7 @@ class SurfApiIntegrationTest {
     @Order(600)
     void aiAsk() {
         try {
-            Map<String, Object> result = withRateLimitRetry(
-                    () -> client.ai.ask("feeds about sustainable energy"));
+            Map<String, Object> result = client.ai.ask("feeds about sustainable energy");
             assertNotNull(result, "AI ask result should not be null");
         } catch (SurfAPIError e) {
             skipOnScopeOrAuth(e);
@@ -506,8 +447,7 @@ class SurfApiIntegrationTest {
     @Order(601)
     void aiFeedSummary() {
         try {
-            FeedSummary summary = withRateLimitRetry(
-                    () -> client.ai.feedSummary("surf/topic/technology"));
+            FeedSummary summary = client.ai.feedSummary("surf/topic/technology");
             assertNotNull(summary, "Feed summary should not be null");
             assertNotNull(summary.feedSummary(), "Feed summary text should not be null");
             assertFalse(summary.feedSummary().isEmpty(), "Feed summary text should not be empty");
@@ -538,7 +478,7 @@ class SurfApiIntegrationTest {
     @Order(701)
     void rateLimitInfoPopulated() {
         // After any successful call, rate limit info should be populated
-        withRateLimitRetry(() -> client.feeds.get("surf/topic/technology"));
+        client.feeds.get("surf/topic/technology");
         RateLimitInfo rl = client.getRateLimit();
         // Rate limit headers may or may not be present depending on the server,
         // but the object itself should exist after a request

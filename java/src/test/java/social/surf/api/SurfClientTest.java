@@ -220,10 +220,65 @@ class SurfClientTest {
             }
         };
 
+        // maxRetries=0: test error-type mapping only, not retry behavior (avoids 42s sleeps)
+        SurfClient noRetry = new SurfClient("surf_sk_test_abc", baseUrl, 10, 0);
         SurfRateLimitError err = assertThrows(SurfRateLimitError.class,
-                () -> client().ai.ask("anything"));
+                () -> noRetry.ai.ask("anything"));
         assertEquals("42", err.getRetryAfter());
         assertEquals(429, err.getStatusCode());
+    }
+
+    @Test
+    void retries429WithRetryAfterThenSucceeds() {
+        java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
+        handler = ex -> {
+            if (calls.incrementAndGet() == 1) {
+                try {
+                    respond(ex, 429, "application/json",
+                            Map.of("Retry-After", "1"),
+                            "{\"error\":\"rate_limit_exceeded\"}".getBytes(StandardCharsets.UTF_8));
+                } catch (IOException e) { throw new RuntimeException(e); }
+            } else {
+                json(ex, 200, "{\"title\":\"Tech\",\"surf_id\":\"surf/topic/technology\"}");
+            }
+        };
+
+        SurfClient c = new SurfClient("surf_sk_test_abc", baseUrl, 10, 1);
+        Feed feed = c.feeds.get("surf/topic/technology");
+        assertEquals("Tech", feed.title());
+        assertEquals(2, calls.get(), "expected 1 initial attempt + 1 retry");
+    }
+
+    @Test
+    void retries5xxThenSucceeds() {
+        java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
+        handler = ex -> {
+            if (calls.incrementAndGet() == 1) {
+                json(ex, 503, "{\"error\":\"service_unavailable\"}");
+            } else {
+                json(ex, 200, "{\"title\":\"Tech\",\"surf_id\":\"surf/topic/technology\"}");
+            }
+        };
+
+        SurfClient c = new SurfClient("surf_sk_test_abc", baseUrl, 10, 1);
+        Feed feed = c.feeds.get("surf/topic/technology");
+        assertEquals("Tech", feed.title());
+        assertEquals(2, calls.get(), "expected 1 initial attempt + 1 retry");
+    }
+
+    @Test
+    void exhaustsRetriesAndThrowsLastError() {
+        java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
+        handler = ex -> {
+            calls.incrementAndGet();
+            json(ex, 503, "{\"error\":\"service_unavailable\"}");
+        };
+
+        SurfClient c = new SurfClient("surf_sk_test_abc", baseUrl, 10, 1);
+        SurfAPIError err = assertThrows(SurfAPIError.class,
+                () -> c.feeds.get("surf/topic/technology"));
+        assertEquals(503, err.getStatusCode());
+        assertEquals(2, calls.get(), "expected 1 initial attempt + 1 retry = 2 total");
     }
 
     @Test

@@ -31,21 +31,36 @@ type Client struct {
 	BaseURL string
 	HTTP    *http.Client
 
+	maxRetries int // set via WithMaxRetries option; default 3
+
 	// Sub-clients
-	Feeds        *FeedsAPI
-	Search       *SearchAPI
-	AI           *AIAPI
-	Account      *AccountAPI
-	Content      *ContentAPI
-	Images       *ImagesAPI
-	Audio        *AudioAPI
+	Feeds         *FeedsAPI
+	Search        *SearchAPI
+	AI            *AIAPI
+	Account       *AccountAPI
+	Content       *ContentAPI
+	Images        *ImagesAPI
+	Audio         *AudioAPI
 	Notifications *NotificationsAPI
-	Preferences  *PreferencesAPI
-	CustomFeeds  *CustomFeedsAPI
-	Media        *MediaAPI
+	Preferences   *PreferencesAPI
+	CustomFeeds   *CustomFeedsAPI
+	Media         *MediaAPI
 
 	// RateLimit is updated after each request.
 	RateLimit *RateLimitInfo
+}
+
+// ClientOption configures a Client.
+type ClientOption func(*Client)
+
+// WithMaxRetries sets the number of retries after the initial attempt on 429,
+// 5xx, or transient network errors (default 3; 0 disables retry).
+func WithMaxRetries(n int) ClientOption {
+	return func(c *Client) {
+		if n >= 0 {
+			c.maxRetries = n
+		}
+	}
 }
 
 // RateLimitInfo holds rate limit data from response headers.
@@ -55,12 +70,16 @@ type RateLimitInfo struct {
 	Reset     string
 }
 
-// NewClient creates a new Surf API client.
-func NewClient(apiKey string) *Client {
+// NewClient creates a new Surf API client. Pass ClientOption values to override defaults.
+func NewClient(apiKey string, opts ...ClientOption) *Client {
 	c := &Client{
-		APIKey:  apiKey,
-		BaseURL: DefaultBaseURL,
-		HTTP:    &http.Client{Timeout: 30 * time.Second},
+		APIKey:     apiKey,
+		BaseURL:    DefaultBaseURL,
+		HTTP:       &http.Client{Timeout: 30 * time.Second},
+		maxRetries: 3,
+	}
+	for _, opt := range opts {
+		opt(c)
 	}
 	c.Feeds = &FeedsAPI{c: c}
 	c.Search = &SearchAPI{c: c}
@@ -97,54 +116,92 @@ func (c *Client) do(method, path string, params url.Values, body interface{}) ([
 		u += "?" + params.Encode()
 	}
 
-	var reqBody io.Reader
+	var bodyBytes []byte
 	if body != nil {
-		b, err := json.Marshal(body)
+		var err error
+		bodyBytes, err = json.Marshal(body)
 		if err != nil {
 			return nil, fmt.Errorf("surf: marshal body: %w", err)
 		}
-		reqBody = bytes.NewReader(b)
 	}
 
-	req, err := http.NewRequest(method, u, reqBody)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("X-API-Key", c.APIKey)
-	req.Header.Set("User-Agent", userAgent)
-	req.Header.Set("Accept", "application/json")
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-
-	resp, err := c.HTTP.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	// Update rate limit info
-	c.RateLimit = &RateLimitInfo{
-		Limit:     atoi(resp.Header.Get("X-RateLimit-Limit")),
-		Remaining: atoi(resp.Header.Get("X-RateLimit-Remaining")),
-		Reset:     resp.Header.Get("X-RateLimit-Reset"),
-	}
-
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	if resp.StatusCode >= 400 {
-		apiErr := &APIError{StatusCode: resp.StatusCode}
-		_ = json.Unmarshal(data, apiErr)
-		if apiErr.Message == "" {
-			apiErr.Message = string(data)
+	for attempt := 0; attempt <= c.maxRetries; attempt++ {
+		var reqBody io.Reader
+		if bodyBytes != nil {
+			reqBody = bytes.NewReader(bodyBytes)
 		}
-		return nil, apiErr
-	}
 
-	return data, nil
+		req, err := http.NewRequest(method, u, reqBody)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("X-API-Key", c.APIKey)
+		req.Header.Set("User-Agent", userAgent)
+		req.Header.Set("Accept", "application/json")
+		if bodyBytes != nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
+
+		resp, err := c.HTTP.Do(req)
+		if err != nil {
+			if attempt < c.maxRetries {
+				time.Sleep(cappedBackoff(attempt))
+				continue
+			}
+			return nil, err
+		}
+
+		c.RateLimit = &RateLimitInfo{
+			Limit:     atoi(resp.Header.Get("X-RateLimit-Limit")),
+			Remaining: atoi(resp.Header.Get("X-RateLimit-Remaining")),
+			Reset:     resp.Header.Get("X-RateLimit-Reset"),
+		}
+
+		data, readErr := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if readErr != nil {
+			return nil, readErr
+		}
+
+		if resp.StatusCode == 429 && attempt < c.maxRetries {
+			retryAfter := atoi(resp.Header.Get("Retry-After"))
+			if retryAfter <= 0 {
+				retryAfter = int(cappedBackoff(attempt).Seconds())
+			}
+			if retryAfter > 60 {
+				retryAfter = 60
+			}
+			time.Sleep(time.Duration(retryAfter) * time.Second)
+			continue
+		}
+
+		if resp.StatusCode >= 500 && attempt < c.maxRetries {
+			time.Sleep(cappedBackoff(attempt))
+			continue
+		}
+
+		if resp.StatusCode >= 400 {
+			apiErr := &APIError{StatusCode: resp.StatusCode}
+			_ = json.Unmarshal(data, apiErr)
+			if apiErr.Message == "" {
+				apiErr.Message = string(data)
+			}
+			return nil, apiErr
+		}
+
+		return data, nil
+	}
+	return nil, fmt.Errorf("surf: request failed after %d attempts", c.maxRetries+1)
+}
+
+// cappedBackoff returns an exponential backoff duration for the given attempt,
+// saturating at attempt=6 (64s→60s cap) to prevent integer overflow on large MaxRetries.
+func cappedBackoff(attempt int) time.Duration {
+	secs := 1 << uint(min(attempt, 6))
+	if secs > 60 {
+		secs = 60
+	}
+	return time.Duration(secs) * time.Second
 }
 
 func (c *Client) get(path string, params url.Values) (json.RawMessage, error) {

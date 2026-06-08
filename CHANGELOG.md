@@ -15,6 +15,10 @@ All notable changes to the Surf API SDKs will be documented here. All SDKs share
   - **Safety: read-only by default.** Write tools (`create_post`, `save_custom_feed`, `favourite_post`, `set_feed_theme`) are only permitted when `allow_writes=True` (Python) or `allowWrites: true` (TypeScript). 19 read-only tools are allowed by default.
   - Lazy import of Agent SDK -- does not require `claude-agent-sdk` / `@anthropic-ai/claude-agent-sdk` unless `SurfAgent` is used
   - Unit tests for import, instantiation, read/write tool allowlists, and ImportError on missing SDK
+- TypeScript, Go, Java: automatic retry with exponential backoff on 429 and 5xx responses — default 3 retries (up to 4 total attempts per call), base delay 1s doubling each retry, all paths capped at 60s, 429 respects `Retry-After` header. Retry count matches Python's default; Python's 5xx/network backoff is uncapped, ours caps at 60s.
+- TypeScript: `maxRetries` option on `SurfClientOptions` to configure retry count (default: `3`; set to `0` to disable)
+- Go: `WithMaxRetries(n int) ClientOption` passed to `NewClient` to configure retry count (default: `3`; pass `WithMaxRetries(0)` to disable)
+- Java: 4-parameter constructor `SurfClient(apiKey, baseUrl, timeoutSeconds, maxRetries)` to configure retry count (default: `3`)
 
 ---
 
@@ -35,6 +39,7 @@ All notable changes to the Surf API SDKs will be documented here. All SDKs share
 - Java: remove non-returned "feed_images" parameter
 - Go, TypeScript: add `services` filter to `getPosts` / `GetPosts` (align with Python and Java)
 - Go: make `service` parameter optional (variadic) on all write methods — `Favourite`, `Unfavourite`, `Boost`, `Unboost`, `Bookmark`, `Unbookmark`, `CreatePost`, `DeletePost`, `Follow`, `Unfollow`. **Source-breaking** for callers that stored these as typed function values or implemented an interface with the old `(string, string)` signature; call-site usage is unaffected.
+- Go, TypeScript, Java: removed `retryOnRateLimit` / `createClient` / `withRateLimitRetry` test helpers — retry is now handled internally by the SDK
 
 ### Fixed
 - Go: `SearchEmptyQuery` test handles 429 rate limit with retry instead of failing

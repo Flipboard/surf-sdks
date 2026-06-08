@@ -29,22 +29,6 @@ func testClient(t *testing.T) *Client {
 	return c
 }
 
-// retryOnRateLimit executes fn and retries once after sleeping if it returns a 429.
-func retryOnRateLimit(t *testing.T, fn func() error) error {
-	t.Helper()
-	err := fn()
-	if err == nil {
-		return nil
-	}
-	var apiErr *APIError
-	if errors.As(err, &apiErr) && apiErr.StatusCode == 429 {
-		t.Log("Rate limited, sleeping 60s before retry...")
-		time.Sleep(60 * time.Second)
-		return fn()
-	}
-	return err
-}
-
 // skipOnScope skips the test if the error indicates a missing scope (401 or 403).
 func skipOnScope(t *testing.T, err error, msg string) {
 	t.Helper()
@@ -91,12 +75,7 @@ func TestIntegration(t *testing.T) {
 	// =====================================================================
 	t.Run("Feeds", func(t *testing.T) {
 		t.Run("GetFeedMetadata", func(t *testing.T) {
-			var raw json.RawMessage
-			err := retryOnRateLimit(t, func() error {
-				var e error
-				raw, e = client.Feeds.Get("surf/topic/technology")
-				return e
-			})
+			raw, err := client.Feeds.Get("surf/topic/technology")
 			if err != nil {
 				t.Fatalf("Feeds.Get failed: %v", err)
 			}
@@ -126,12 +105,7 @@ func TestIntegration(t *testing.T) {
 		})
 
 		t.Run("GetPostsWithLimit", func(t *testing.T) {
-			var raw json.RawMessage
-			err := retryOnRateLimit(t, func() error {
-				var e error
-				raw, e = client.Feeds.GetPosts("surf/topic/technology", &PostsOptions{Limit: 5})
-				return e
-			})
+			raw, err := client.Feeds.GetPosts("surf/topic/technology", &PostsOptions{Limit: 5})
 			if err != nil {
 				t.Fatalf("Feeds.GetPosts failed: %v", err)
 			}
@@ -159,12 +133,7 @@ func TestIntegration(t *testing.T) {
 		})
 
 		t.Run("GetPostsSortRecent", func(t *testing.T) {
-			var raw json.RawMessage
-			err := retryOnRateLimit(t, func() error {
-				var e error
-				raw, e = client.Feeds.GetPosts("surf/topic/technology", &PostsOptions{Limit: 3, Sort: "recent"})
-				return e
-			})
+			raw, err := client.Feeds.GetPosts("surf/topic/technology", &PostsOptions{Limit: 3, Sort: "recent"})
 			if err != nil {
 				t.Fatalf("Feeds.GetPosts(sort=recent) failed: %v", err)
 			}
@@ -179,12 +148,7 @@ func TestIntegration(t *testing.T) {
 	// =====================================================================
 	t.Run("Search", func(t *testing.T) {
 		t.Run("SearchFeeds", func(t *testing.T) {
-			var raw json.RawMessage
-			err := retryOnRateLimit(t, func() error {
-				var e error
-				raw, e = client.Search.Feeds("technology", 5)
-				return e
-			})
+			raw, err := client.Search.Feeds("technology", 5)
 			if err != nil {
 				t.Fatalf("Search.Feeds failed: %v", err)
 			}
@@ -194,12 +158,7 @@ func TestIntegration(t *testing.T) {
 		})
 
 		t.Run("SearchPosts", func(t *testing.T) {
-			var raw json.RawMessage
-			err := retryOnRateLimit(t, func() error {
-				var e error
-				raw, e = client.Search.Posts("artificial intelligence", 5)
-				return e
-			})
+			raw, err := client.Search.Posts("artificial intelligence", 5)
 			if err != nil {
 				t.Fatalf("Search.Posts failed: %v", err)
 			}
@@ -209,12 +168,7 @@ func TestIntegration(t *testing.T) {
 		})
 
 		t.Run("SearchAccounts", func(t *testing.T) {
-			var raw json.RawMessage
-			err := retryOnRateLimit(t, func() error {
-				var e error
-				raw, e = client.Search.Accounts("surf", 5)
-				return e
-			})
+			raw, err := client.Search.Accounts("surf", 5)
 			if err != nil {
 				t.Fatalf("Search.Accounts failed: %v", err)
 			}
@@ -224,10 +178,7 @@ func TestIntegration(t *testing.T) {
 		})
 
 		t.Run("SearchEmptyQuery", func(t *testing.T) {
-			err := retryOnRateLimit(t, func() error {
-				_, e := client.Search.Feeds("", 5)
-				return e
-			})
+			_, err := client.Search.Feeds("", 5)
 			// Either succeeds (empty results) or returns 400; both are acceptable
 			if err != nil {
 				var apiErr *APIError
@@ -245,14 +196,9 @@ func TestIntegration(t *testing.T) {
 		var feedID string
 
 		t.Run("Create", func(t *testing.T) {
-			var raw json.RawMessage
-			err := retryOnRateLimit(t, func() error {
-				var e error
-				raw, e = client.CustomFeeds.Create(map[string]string{
-					"title":       "Go SDK Test Feed",
-					"description": "Automated integration test — safe to delete",
-				})
-				return e
+			raw, err := client.CustomFeeds.Create(map[string]string{
+				"title":       "Go SDK Test Feed",
+				"description": "Automated integration test — safe to delete",
 			})
 			skipOnScope(t, err, "Token lacks write:feeds scope")
 			if err != nil {
@@ -289,10 +235,7 @@ func TestIntegration(t *testing.T) {
 			}
 			for _, tc := range operators {
 				t.Run(tc.name, func(t *testing.T) {
-					err := retryOnRateLimit(t, func() error {
-						_, e := client.CustomFeeds.AddOperator(feedID, tc.op)
-						return e
-					})
+					_, err := client.CustomFeeds.AddOperator(feedID, tc.op)
 					if err != nil {
 						t.Fatalf("AddOperator(%s) failed: %v", tc.name, err)
 					}
@@ -304,12 +247,7 @@ func TestIntegration(t *testing.T) {
 			if feedID == "" {
 				t.Skip("No feed created")
 			}
-			var raw json.RawMessage
-			err := retryOnRateLimit(t, func() error {
-				var e error
-				raw, e = client.CustomFeeds.Get(feedID)
-				return e
-			})
+			raw, err := client.CustomFeeds.Get(feedID)
 			if err != nil {
 				t.Fatalf("CustomFeeds.Get failed: %v", err)
 			}
@@ -339,12 +277,7 @@ func TestIntegration(t *testing.T) {
 		})
 
 		t.Run("ListFeeds", func(t *testing.T) {
-			var raw json.RawMessage
-			err := retryOnRateLimit(t, func() error {
-				var e error
-				raw, e = client.CustomFeeds.List()
-				return e
-			})
+			raw, err := client.CustomFeeds.List()
 			if err != nil {
 				t.Fatalf("CustomFeeds.List failed: %v", err)
 			}
@@ -357,9 +290,7 @@ func TestIntegration(t *testing.T) {
 			if feedID == "" {
 				t.Skip("No feed created")
 			}
-			err := retryOnRateLimit(t, func() error {
-				return client.CustomFeeds.Delete(feedID)
-			})
+			err := client.CustomFeeds.Delete(feedID)
 			if err != nil {
 				var apiErr *APIError
 				if errors.As(err, &apiErr) && apiErr.StatusCode == 404 {
@@ -389,15 +320,10 @@ func TestIntegration(t *testing.T) {
 					Light: map[string]string{"surface": "#EFEADD", "surfaceHeader": "#005F5F"},
 				},
 			}
-			var raw json.RawMessage
-			err := retryOnRateLimit(t, func() error {
-				var e error
-				raw, e = client.CustomFeeds.Create(map[string]interface{}{
-					"title":       "Go SDK Theme Test",
-					"description": "Automated theme test — safe to delete",
-					"theme":       theme.ToMap(),
-				})
-				return e
+			raw, err := client.CustomFeeds.Create(map[string]interface{}{
+				"title":       "Go SDK Theme Test",
+				"description": "Automated theme test — safe to delete",
+				"theme":       theme.ToMap(),
 			})
 			skipOnScope(t, err, "Token lacks write:feeds scope")
 			if err != nil {
@@ -434,12 +360,7 @@ func TestIntegration(t *testing.T) {
 			if feedID == "" {
 				t.Skip("No themed feed created")
 			}
-			var raw json.RawMessage
-			err := retryOnRateLimit(t, func() error {
-				var e error
-				raw, e = client.CustomFeeds.Get(feedID)
-				return e
-			})
+			raw, err := client.CustomFeeds.Get(feedID)
 			if err != nil {
 				t.Fatalf("GET failed: %v", err)
 			}
@@ -456,9 +377,7 @@ func TestIntegration(t *testing.T) {
 			if feedID == "" {
 				t.Skip("No themed feed created")
 			}
-			err := retryOnRateLimit(t, func() error {
-				return client.CustomFeeds.Delete(feedID)
-			})
+			err := client.CustomFeeds.Delete(feedID)
 			if err != nil {
 				var apiErr *APIError
 				if errors.As(err, &apiErr) && apiErr.StatusCode == 404 {
@@ -478,12 +397,7 @@ func TestIntegration(t *testing.T) {
 
 		t.Run("CreatePost", func(t *testing.T) {
 			status := fmt.Sprintf("Go SDK test (mastodon) — %d. Safe to delete.", time.Now().Unix())
-			var raw json.RawMessage
-			err := retryOnRateLimit(t, func() error {
-				var e error
-				raw, e = client.Feeds.CreatePost(status, "public", "mastodon")
-				return e
-			})
+			raw, err := client.Feeds.CreatePost(status, "public", "mastodon")
 			skipOnScope(t, err, "No mastodon linked account or missing write scope")
 			if err != nil {
 				t.Fatalf("CreatePost(mastodon) failed: %v", err)
@@ -508,10 +422,7 @@ func TestIntegration(t *testing.T) {
 			if postID == "" {
 				t.Skip("No post created")
 			}
-			err := retryOnRateLimit(t, func() error {
-				_, e := client.Feeds.Favourite(postID, "mastodon")
-				return e
-			})
+			_, err := client.Feeds.Favourite(postID, "mastodon")
 			if err != nil {
 				t.Fatalf("Favourite failed: %v", err)
 			}
@@ -521,10 +432,7 @@ func TestIntegration(t *testing.T) {
 			if postID == "" {
 				t.Skip("No post created")
 			}
-			err := retryOnRateLimit(t, func() error {
-				_, e := client.Feeds.Unfavourite(postID, "mastodon")
-				return e
-			})
+			_, err := client.Feeds.Unfavourite(postID, "mastodon")
 			if err != nil {
 				t.Fatalf("Unfavourite failed: %v", err)
 			}
@@ -534,10 +442,7 @@ func TestIntegration(t *testing.T) {
 			if postID == "" {
 				t.Skip("No post created")
 			}
-			err := retryOnRateLimit(t, func() error {
-				_, e := client.Feeds.Bookmark(postID, "mastodon")
-				return e
-			})
+			_, err := client.Feeds.Bookmark(postID, "mastodon")
 			if err != nil {
 				t.Fatalf("Bookmark failed: %v", err)
 			}
@@ -547,10 +452,7 @@ func TestIntegration(t *testing.T) {
 			if postID == "" {
 				t.Skip("No post created")
 			}
-			err := retryOnRateLimit(t, func() error {
-				_, e := client.Feeds.Unbookmark(postID, "mastodon")
-				return e
-			})
+			_, err := client.Feeds.Unbookmark(postID, "mastodon")
 			if err != nil {
 				t.Fatalf("Unbookmark failed: %v", err)
 			}
@@ -560,9 +462,7 @@ func TestIntegration(t *testing.T) {
 			if postID == "" {
 				t.Skip("No post created")
 			}
-			err := retryOnRateLimit(t, func() error {
-				return client.Feeds.DeletePost(postID, "mastodon")
-			})
+			err := client.Feeds.DeletePost(postID, "mastodon")
 			if err != nil {
 				t.Fatalf("DeletePost failed: %v", err)
 			}
@@ -578,12 +478,7 @@ func TestIntegration(t *testing.T) {
 
 		t.Run("CreatePost", func(t *testing.T) {
 			status := fmt.Sprintf("Go SDK test (bluesky) — %d. Safe to delete.", time.Now().Unix())
-			var raw json.RawMessage
-			err := retryOnRateLimit(t, func() error {
-				var e error
-				raw, e = client.Feeds.CreatePost(status, "public", "bluesky")
-				return e
-			})
+			raw, err := client.Feeds.CreatePost(status, "public", "bluesky")
 			skipOnScope(t, err, "No bluesky linked account or missing write scope")
 			if err != nil {
 				t.Fatalf("CreatePost(bluesky) failed: %v", err)
@@ -608,10 +503,7 @@ func TestIntegration(t *testing.T) {
 			if postID == "" {
 				t.Skip("No post created")
 			}
-			err := retryOnRateLimit(t, func() error {
-				_, e := client.Feeds.Favourite(postID, "bluesky")
-				return e
-			})
+			_, err := client.Feeds.Favourite(postID, "bluesky")
 			if err != nil {
 				t.Fatalf("Favourite failed: %v", err)
 			}
@@ -621,9 +513,7 @@ func TestIntegration(t *testing.T) {
 			if postID == "" {
 				t.Skip("No post created")
 			}
-			err := retryOnRateLimit(t, func() error {
-				return client.Feeds.DeletePost(postID, "bluesky")
-			})
+			err := client.Feeds.DeletePost(postID, "bluesky")
 			if err != nil {
 				t.Fatalf("DeletePost failed: %v", err)
 			}
@@ -636,12 +526,7 @@ func TestIntegration(t *testing.T) {
 	// =====================================================================
 	t.Run("AI", func(t *testing.T) {
 		t.Run("Ask", func(t *testing.T) {
-			var raw json.RawMessage
-			err := retryOnRateLimit(t, func() error {
-				var e error
-				raw, e = client.AI.Ask("What is happening in technology today?", 3)
-				return e
-			})
+			raw, err := client.AI.Ask("What is happening in technology today?", 3)
 			skipOnScope(t, err, "Token lacks use:ai scope")
 			if err != nil {
 				// AI rate limit is 10/day — if we hit it, skip rather than fail
@@ -657,12 +542,7 @@ func TestIntegration(t *testing.T) {
 		})
 
 		t.Run("FeedSummary", func(t *testing.T) {
-			var raw json.RawMessage
-			err := retryOnRateLimit(t, func() error {
-				var e error
-				raw, e = client.AI.FeedSummary("surf/topic/technology", 10)
-				return e
-			})
+			raw, err := client.AI.FeedSummary("surf/topic/technology", 10)
 			skipOnScope(t, err, "Token lacks use:ai scope")
 			if err != nil {
 				var apiErr *APIError

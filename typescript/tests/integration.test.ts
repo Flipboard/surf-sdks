@@ -9,13 +9,13 @@
  *   npm run test:integration
  *
  * Tests are sequential: feeds -> search -> custom feeds -> write ops -> AI -> error handling.
- * Rate-limited requests (429) are retried once after Retry-After (capped at 65s).
+ * Rate-limited (429) and server error (5xx) requests are retried automatically by the SDK.
  * Tests that require scopes the token lacks are skipped (401/403).
  */
 
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { SurfClient, SurfAuthError, SurfScopeError, SurfRateLimitError } from '../src/index';
+import { SurfClient, SurfAuthError, SurfScopeError } from '../src/index';
 
 // ---------------------------------------------------------------------------
 // Config
@@ -34,40 +34,7 @@ if (!API_TOKEN) {
 // Rate-limit-aware client wrapper
 // ---------------------------------------------------------------------------
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
-/**
- * Wraps the SurfClient to retry once on 429 (rate limit).
- * We monkey-patch _request to intercept SurfRateLimitError.
- */
-function createClient(): SurfClient {
-  const client = new SurfClient({ apiKey: API_TOKEN, baseUrl: BASE_URL, timeout: 60_000 });
-
-  const origRequest = (client as any)._request.bind(client);
-  (client as any)._request = async function <T>(
-    method: string,
-    path: string,
-    opts?: any,
-  ): Promise<T> {
-    try {
-      return await origRequest(method, path, opts);
-    } catch (err) {
-      if (err instanceof SurfRateLimitError) {
-        const wait = Math.min(err.retryAfter ?? 5, 65) * 1000;
-        console.log(`  [rate-limit] 429 on ${method} ${path}, waiting ${wait / 1000}s...`);
-        await sleep(wait);
-        return origRequest(method, path, opts);
-      }
-      throw err;
-    }
-  };
-
-  return client;
-}
-
-const client = createClient();
+const client = new SurfClient({ apiKey: API_TOKEN, baseUrl: BASE_URL, timeout: 60_000 });
 
 /** Returns true if err is a scope/auth issue we should skip on. */
 function isScopeOrAuth(err: unknown): boolean {
