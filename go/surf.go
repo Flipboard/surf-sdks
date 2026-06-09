@@ -408,10 +408,18 @@ func (a *SearchAPI) Search(q, typ string, limit int) (json.RawMessage, error) {
 	return a.c.get("/search", url.Values{"q": {q}, "type": {typ}, "limit": {strconv.Itoa(limit)}})
 }
 
-func (a *SearchAPI) Feeds(q string, limit int) (json.RawMessage, error) { return a.Search(q, "feeds", limit) }
-func (a *SearchAPI) Posts(q string, limit int) (json.RawMessage, error) { return a.Search(q, "posts", limit) }
-func (a *SearchAPI) Accounts(q string, limit int) (json.RawMessage, error) { return a.Search(q, "accounts", limit) }
-func (a *SearchAPI) Podcasts(q string, limit int) (json.RawMessage, error) { return a.Search(q, "podcasts", limit) }
+func (a *SearchAPI) Feeds(q string, limit int) (json.RawMessage, error) {
+	return a.Search(q, "feeds", limit)
+}
+func (a *SearchAPI) Posts(q string, limit int) (json.RawMessage, error) {
+	return a.Search(q, "posts", limit)
+}
+func (a *SearchAPI) Accounts(q string, limit int) (json.RawMessage, error) {
+	return a.Search(q, "accounts", limit)
+}
+func (a *SearchAPI) Podcasts(q string, limit int) (json.RawMessage, error) {
+	return a.Search(q, "podcasts", limit)
+}
 
 func (a *SearchAPI) Discover(typ, surfId string, limit int) (json.RawMessage, error) {
 	v := url.Values{"type": {typ}, "limit": {strconv.Itoa(limit)}}
@@ -455,13 +463,17 @@ func (a *AIAPI) BuildFeed(prompt string, feedId string) (json.RawMessage, error)
 // AccountAPI provides account lookup and profile management.
 type AccountAPI struct{ c *Client }
 
-func (a *AccountAPI) Get() (json.RawMessage, error)          { return a.c.get("/account", nil) }
-func (a *AccountAPI) Update(fields interface{}) (json.RawMessage, error) { return a.c.put("/account", fields) }
+func (a *AccountAPI) Get() (json.RawMessage, error) { return a.c.get("/account", nil) }
+func (a *AccountAPI) Update(fields interface{}) (json.RawMessage, error) {
+	return a.c.put("/account", fields)
+}
 func (a *AccountAPI) Lookup(account string) (json.RawMessage, error) {
 	return a.c.get("/account/lookup", url.Values{"account": {account}})
 }
 func (a *AccountAPI) GetLinks() (json.RawMessage, error) { return a.c.get("/account/links", nil) }
-func (a *AccountAPI) AddLink(link interface{}) (json.RawMessage, error) { return a.c.post("/account/links", link) }
+func (a *AccountAPI) AddLink(link interface{}) (json.RawMessage, error) {
+	return a.c.post("/account/links", link)
+}
 func (a *AccountAPI) UpdateLink(id string, link interface{}) (json.RawMessage, error) {
 	return a.c.put("/account/links/"+id, link)
 }
@@ -482,7 +494,9 @@ func (a *AccountAPI) Unfollow(accountId string, service ...string) (json.RawMess
 	data, err := a.c.do("POST", "/accounts/"+accountId+"/unfollow", params, nil)
 	return json.RawMessage(data), err
 }
-func (a *AccountAPI) GetConnectedApps() (json.RawMessage, error) { return a.c.get("/account/connected-apps", nil) }
+func (a *AccountAPI) GetConnectedApps() (json.RawMessage, error) {
+	return a.c.get("/account/connected-apps", nil)
+}
 func (a *AccountAPI) RevokeConnectedApp(authorizationId int) (json.RawMessage, error) {
 	return a.c.post(fmt.Sprintf("/account/connected-apps/%d/revoke", authorizationId), nil)
 }
@@ -494,15 +508,21 @@ func (a *AccountAPI) RevokeConnectedApp(authorizationId int) (json.RawMessage, e
 // ContentAPI provides URL resolution, article extraction, and language detection.
 type ContentAPI struct{ c *Client }
 
-func (a *ContentAPI) Resolve(u string) (json.RawMessage, error) { return a.c.get("/content/resolve", url.Values{"url": {u}}) }
+func (a *ContentAPI) Resolve(u string) (json.RawMessage, error) {
+	return a.c.get("/content/resolve", url.Values{"url": {u}})
+}
 func (a *ContentAPI) Extract(u, typ string) (json.RawMessage, error) {
 	if typ == "" {
 		typ = "article"
 	}
 	return a.c.get("/content/extract", url.Values{"url": {u}, "type": {typ}})
 }
-func (a *ContentAPI) Language(u string) (json.RawMessage, error) { return a.c.get("/content/language", url.Values{"url": {u}}) }
-func (a *ContentAPI) Topics(u string) (json.RawMessage, error)   { return a.c.get("/content/topics", url.Values{"url": {u}}) }
+func (a *ContentAPI) Language(u string) (json.RawMessage, error) {
+	return a.c.get("/content/language", url.Values{"url": {u}})
+}
+func (a *ContentAPI) Topics(u string) (json.RawMessage, error) {
+	return a.c.get("/content/topics", url.Values{"url": {u}})
+}
 func (a *ContentAPI) Enrich(postId string) (json.RawMessage, error) {
 	return a.c.get("/content/enrich", url.Values{"postId": {postId}})
 }
@@ -514,12 +534,18 @@ func (a *ContentAPI) Enrich(postId string) (json.RawMessage, error) {
 // ImagesAPI provides AI-powered image analysis.
 type ImagesAPI struct{ c *Client }
 
-func (a *ImagesAPI) Info(u string) (json.RawMessage, error) { return a.c.get("/image/info", url.Values{"url": {u}}) }
-func (a *ImagesAPI) Resize(u, size string) ([]byte, error)  { return a.c.getRaw("/image/resize", url.Values{"url": {u}, "size": {size}}) }
+func (a *ImagesAPI) Info(u string) (json.RawMessage, error) {
+	return a.c.get("/image/info", url.Values{"url": {u}})
+}
+func (a *ImagesAPI) Resize(u, size string) ([]byte, error) {
+	return a.c.getRaw("/image/resize", url.Values{"url": {u}, "size": {size}})
+}
 func (a *ImagesAPI) Colors(u string, k int) ([]byte, error) {
 	return a.c.getRaw("/image/colors", url.Values{"url": {u}, "k": {strconv.Itoa(k)}})
 }
-func (a *ImagesAPI) Moderate(u string) (json.RawMessage, error) { return a.c.get("/image/moderate", url.Values{"url": {u}}) }
+func (a *ImagesAPI) Moderate(u string) (json.RawMessage, error) {
+	return a.c.get("/image/moderate", url.Values{"url": {u}})
+}
 
 // =========================================================================
 // Audio
@@ -528,8 +554,12 @@ func (a *ImagesAPI) Moderate(u string) (json.RawMessage, error) { return a.c.get
 // AudioAPI provides radio stations, briefings, podcasts, and text-to-speech.
 type AudioAPI struct{ c *Client }
 
-func (a *AudioAPI) ListStations() (json.RawMessage, error) { return a.c.get("/audio/radio/stations", nil) }
-func (a *AudioAPI) GetStation(id string) (json.RawMessage, error) { return a.c.get("/audio/radio/stations/"+id, nil) }
+func (a *AudioAPI) ListStations() (json.RawMessage, error) {
+	return a.c.get("/audio/radio/stations", nil)
+}
+func (a *AudioAPI) GetStation(id string) (json.RawMessage, error) {
+	return a.c.get("/audio/radio/stations/"+id, nil)
+}
 func (a *AudioAPI) CreateStation(feedSurfId string) (json.RawMessage, error) {
 	return a.c.post("/audio/radio/stations", map[string]string{"feed_surf_id": feedSurfId})
 }
@@ -539,7 +569,9 @@ func (a *AudioAPI) GenerateProgram(stationId string) (json.RawMessage, error) {
 func (a *AudioAPI) GetProgram(programId string) (json.RawMessage, error) {
 	return a.c.get("/audio/radio/programs/"+programId, nil)
 }
-func (a *AudioAPI) GenerateBriefing() (json.RawMessage, error)   { return a.c.post("/audio/briefing/generate", nil) }
+func (a *AudioAPI) GenerateBriefing() (json.RawMessage, error) {
+	return a.c.post("/audio/briefing/generate", nil)
+}
 func (a *AudioAPI) GetBriefing(id string) (json.RawMessage, error) {
 	if id == "" {
 		return a.c.get("/audio/briefing/latest", nil)
@@ -571,7 +603,9 @@ func (a *NotificationsAPI) List(limit int, cursor string) (json.RawMessage, erro
 	}
 	return a.c.get("/notifications", v)
 }
-func (a *NotificationsAPI) MarkRead() (json.RawMessage, error) { return a.c.post("/notifications/read", nil) }
+func (a *NotificationsAPI) MarkRead() (json.RawMessage, error) {
+	return a.c.post("/notifications/read", nil)
+}
 
 // =========================================================================
 // Preferences
@@ -686,17 +720,84 @@ func (t *FeedTheme) ToMap() map[string]interface{} {
 	return m
 }
 
+// Operator is the role an operator (source) plays within a custom feed.
+type Operator string
+
+const (
+	OperatorSource           Operator = "source"
+	OperatorInclude          Operator = "include"
+	OperatorFilteringInclude Operator = "filtering_include"
+	OperatorExclude          Operator = "exclude"
+	OperatorScore            Operator = "score"
+)
+
+// FeedOperatorFilter is a filter applied to a custom-feed operator.
+type FeedOperatorFilter struct {
+	SurfID   string   `json:"surfId"`
+	Operator Operator `json:"operator,omitempty"`
+}
+
+// FeedOperator is the writable shape for a custom-feed operator — the fields the
+// API accepts on create. Server-assigned fields (id, created, last_modified) are
+// not included.
+//
+// Common case:
+//
+//	surf.NewFeedOperatorSource("surf/topic/artificial-intelligence")
+type FeedOperator struct {
+	SurfID   string               `json:"surfId"`
+	Operator Operator             `json:"operator,omitempty"`
+	Filters  []FeedOperatorFilter `json:"filters,omitempty"`
+}
+
+// NewFeedOperatorSource returns a source FeedOperator for the given surfId.
+func NewFeedOperatorSource(surfID string) FeedOperator {
+	return FeedOperator{SurfID: surfID, Operator: OperatorSource}
+}
+
+// NewFeedOperator returns a FeedOperator with the given surfId and operator role.
+func NewFeedOperator(surfID string, op Operator) FeedOperator {
+	return FeedOperator{SurfID: surfID, Operator: op}
+}
+
 // CustomFeedsAPI provides custom feed CRUD and operator management.
 type CustomFeedsAPI struct{ c *Client }
 
-func (a *CustomFeedsAPI) List() (json.RawMessage, error)                 { return a.c.get("/custom", nil) }
-func (a *CustomFeedsAPI) Get(id string) (json.RawMessage, error)         { return a.c.get("/custom/"+id, nil) }
-func (a *CustomFeedsAPI) Create(body interface{}) (json.RawMessage, error) { return a.c.post("/custom", body) }
-func (a *CustomFeedsAPI) Update(id string, body interface{}) (json.RawMessage, error) { return a.c.put("/custom/"+id, body) }
-func (a *CustomFeedsAPI) Delete(id string) error                         { return a.c.del("/custom/" + id) }
-func (a *CustomFeedsAPI) Clone(id string) (json.RawMessage, error)       { return a.c.post("/custom/"+id+"/clone", nil) }
-func (a *CustomFeedsAPI) Publish(id string) (json.RawMessage, error)     { return a.c.post("/custom/"+id+"/publish", nil) }
-func (a *CustomFeedsAPI) Unpublish(id string) (json.RawMessage, error)   { return a.c.post("/custom/"+id+"/unpublish", nil) }
+func (a *CustomFeedsAPI) List() (json.RawMessage, error)         { return a.c.get("/custom", nil) }
+func (a *CustomFeedsAPI) Get(id string) (json.RawMessage, error) { return a.c.get("/custom/"+id, nil) }
+func (a *CustomFeedsAPI) Create(body interface{}) (json.RawMessage, error) {
+	return a.c.post("/custom", body)
+}
+
+// CreateWithOperators creates a new custom feed with typed FeedOperator values.
+//
+//	client.CustomFeeds.CreateWithOperators("AI News", "Latest AI",
+//	    surf.NewFeedOperatorSource("surf/topic/artificial-intelligence"),
+//	    surf.NewFeedOperatorSource("surf/hashtag/machinelearning"),
+//	)
+func (a *CustomFeedsAPI) CreateWithOperators(title, description string, operators ...FeedOperator) (json.RawMessage, error) {
+	body := map[string]interface{}{"title": title}
+	if description != "" {
+		body["description"] = description
+	}
+	if len(operators) > 0 {
+		body["operators"] = operators
+	}
+	return a.c.post("/custom", body)
+}
+func (a *CustomFeedsAPI) Update(id string, body interface{}) (json.RawMessage, error) {
+	return a.c.put("/custom/"+id, body)
+}
+func (a *CustomFeedsAPI) Delete(id string) error { return a.c.del("/custom/" + id) }
+func (a *CustomFeedsAPI) Clone(id string) (json.RawMessage, error) {
+	return a.c.post("/custom/"+id+"/clone", nil)
+}
+func (a *CustomFeedsAPI) Publish(id string) (json.RawMessage, error) {
+	return a.c.post("/custom/"+id+"/publish", nil)
+}
+func (a *CustomFeedsAPI) Unpublish(id string) (json.RawMessage, error) {
+	return a.c.post("/custom/"+id+"/unpublish", nil)
+}
 func (a *CustomFeedsAPI) AddOperator(feedId string, op interface{}) (json.RawMessage, error) {
 	return a.c.post("/custom/"+feedId+"/operators", []interface{}{op})
 }

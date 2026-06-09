@@ -518,6 +518,22 @@ export interface FeedThemeColorPalette {
   [key: string]: string | undefined;
 }
 
+/**
+ * Writable shape for a custom-feed operator — the fields the API accepts on create.
+ * Server-assigned fields (`id`, `created`, `last_modified`) live on the response object.
+ *
+ * Common case:
+ * ```ts
+ * { surfId: 'surf/topic/artificial-intelligence', operator: 'source' }
+ * ```
+ */
+export interface FeedOperator {
+  surfId: string;
+  /** Defaults to `'source'` when omitted. */
+  operator?: 'source' | 'include' | 'filtering_include' | 'exclude' | 'score' | (string & {});
+  filters?: Array<{ surfId: string; operator?: 'source' | 'include' | 'filtering_include' | 'exclude' | 'score' | (string & {}) }>;
+}
+
 /** Custom feed CRUD and operator management. */
 class CustomFeedsAPI {
   constructor(private c: SurfClient) {}
@@ -529,6 +545,20 @@ class CustomFeedsAPI {
     const payload: Record<string, unknown> = { ...rest };
     if (theme) payload.theme = theme;
     return this.c._post('/custom', payload);
+  }
+
+  /**
+   * Create a new custom feed with typed {@link FeedOperator} objects.
+   *
+   * ```ts
+   * client.customFeeds.createWithOperators('AI News', [
+   *   { surfId: 'surf/topic/artificial-intelligence', operator: 'source' },
+   *   { surfId: 'surf/hashtag/machinelearning', operator: 'source' },
+   * ], 'Latest AI');
+   * ```
+   */
+  createWithOperators(title: string, operators: FeedOperator[], description?: string) {
+    return this.create({ title, description, operators });
   }
   update(feedId: string, body: Record<string, unknown> & { theme?: FeedTheme }) {
     const { theme, ...rest } = body;

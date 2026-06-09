@@ -208,7 +208,58 @@ describe('Custom Feeds', { concurrency: false }, () => {
 });
 
 // ---------------------------------------------------------------------------
-// 3b. Custom Feed Themes
+// 3b. createWithOperators typed helper
+// ---------------------------------------------------------------------------
+
+describe('createWithOperators', { concurrency: false }, () => {
+  let feedId: string | null = null;
+  let skipped = false;
+
+  it('should create a feed with typed FeedOperator objects', async () => {
+    try {
+      const result: any = await client.customFeeds.createWithOperators(
+        'SDK OpTest Feed',
+        [
+          { surfId: 'surf/topic/technology', operator: 'source' },
+          { surfId: 'surf/hashtag/opensource', operator: 'source' },
+        ],
+        'createWithOperators integration test -- safe to delete',
+      );
+      const rawId: string = result?.id ?? result?.surfId ?? result?.surf_id ?? '';
+      feedId = rawId.replace('surf/custom/', '');
+      assert.ok(feedId, 'Should return a feed ID');
+    } catch (err) {
+      if (isScopeOrAuth(err)) {
+        skipped = true;
+        console.log('  [skip] Token lacks write:feeds scope');
+        return;
+      }
+      throw err;
+    }
+  });
+
+  it('should have the supplied operators stored on the feed', async () => {
+    if (skipped || !feedId) return;
+    const feed: any = await client.customFeeds.get(feedId);
+    const storedIds = new Set((feed.operators ?? []).map((op: any) => op.surfId));
+    assert.ok(storedIds.has('surf/topic/technology'), `topic operator missing, got: ${JSON.stringify([...storedIds])}`);
+    assert.ok(storedIds.has('surf/hashtag/opensource'), `hashtag operator missing, got: ${JSON.stringify([...storedIds])}`);
+  });
+
+  after(async () => {
+    if (feedId) {
+      try {
+        await client.customFeeds.delete(feedId);
+        console.log(`  [cleanup] Deleted OpTest feed ${feedId}`);
+      } catch {
+        console.log(`  [cleanup] Could not delete OpTest feed ${feedId}`);
+      }
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 3c. Custom Feed Themes
 // ---------------------------------------------------------------------------
 
 describe('Custom Feed Themes', { concurrency: false }, () => {

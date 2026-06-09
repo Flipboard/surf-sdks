@@ -305,7 +305,67 @@ func TestIntegration(t *testing.T) {
 	})
 
 	// =====================================================================
-	// 3b. Custom Feed Themes
+	// 3b. CreateWithOperators typed helper
+	// =====================================================================
+	t.Run("CreateWithOperators", func(t *testing.T) {
+		var feedID string
+
+		t.Run("Create", func(t *testing.T) {
+			raw, err := client.CustomFeeds.CreateWithOperators(
+				"Go SDK OpTest Feed",
+				"CreateWithOperators integration test — safe to delete",
+				NewFeedOperatorSource("surf/topic/technology"),
+				NewFeedOperatorSource("surf/hashtag/opensource"),
+			)
+			skipOnScope(t, err, "Token lacks write:feeds scope")
+			if err != nil {
+				t.Fatalf("CreateWithOperators failed: %v", err)
+			}
+			var e error
+			feedID, e = extractFeedID(raw)
+			if e != nil {
+				t.Fatalf("Could not extract feed ID: %v", e)
+			}
+			t.Logf("Created OpTest feed: %s", feedID)
+		})
+
+		t.Cleanup(func() {
+			if feedID != "" {
+				t.Logf("Cleanup: deleting OpTest feed %s", feedID)
+				_ = client.CustomFeeds.Delete(feedID)
+			}
+		})
+
+		t.Run("VerifyOperators", func(t *testing.T) {
+			if feedID == "" {
+				t.Skip("No feed created")
+			}
+			raw, err := client.CustomFeeds.Get(feedID)
+			if err != nil {
+				t.Fatalf("CustomFeeds.Get failed: %v", err)
+			}
+			var data struct {
+				Operators []struct {
+					SurfID string `json:"surfId"`
+				} `json:"operators"`
+			}
+			if err := json.Unmarshal(raw, &data); err != nil {
+				t.Fatalf("Failed to parse feed data: %v", err)
+			}
+			storedIDs := make(map[string]bool)
+			for _, op := range data.Operators {
+				storedIDs[op.SurfID] = true
+			}
+			for _, id := range []string{"surf/topic/technology", "surf/hashtag/opensource"} {
+				if !storedIDs[id] {
+					t.Errorf("Expected operator %q not found, got: %v", id, storedIDs)
+				}
+			}
+		})
+	})
+
+	// =====================================================================
+	// 3c. Custom Feed Themes
 	// =====================================================================
 	t.Run("CustomFeedThemes", func(t *testing.T) {
 		var feedID string

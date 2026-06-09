@@ -6,7 +6,7 @@ Tests the SDK client against the live API. Requires SURF_API_TEST_TOKEN env var.
 import time
 import pytest
 
-from surf_api import SurfClient
+from surf_api import SurfClient, NewFeedOperator
 from surf_api.exceptions import (
     SurfAPIError,
     SurfAuthError,
@@ -132,6 +132,46 @@ class TestCustomFeeds:
             retry_on_rate_limit(lambda: client.custom_feeds.delete(self.feed_id))
         except SurfNotFoundError:
             pass  # already deleted
+
+
+class TestCreateWithOperators:
+    """Tests the create_with_operators convenience method and NewFeedOperator helpers."""
+
+    feed_id = None
+
+    def test_01_create_with_operators(self, client):
+        result = skip_on_scope(lambda: retry_on_rate_limit(lambda:
+            client.custom_feeds.create_with_operators(
+                title=f"SDK OpTest {int(time.time())}",
+                operators=[
+                    NewFeedOperator.source("surf/topic/technology"),
+                    NewFeedOperator.source("surf/hashtag/opensource"),
+                ],
+                description="NewFeedOperator integration test -- safe to delete",
+            )
+        ))
+        if result is None:
+            return
+        raw_id = result.get("id") or result.get("surfId") or ""
+        TestCreateWithOperators.feed_id = raw_id.replace("surf/custom/", "")
+        assert TestCreateWithOperators.feed_id
+
+    def test_02_verify_operators(self, client):
+        if not self.feed_id:
+            pytest.skip("No feed created")
+        feed = retry_on_rate_limit(lambda: client.custom_feeds.get(self.feed_id))
+        assert feed is not None
+        stored = {op.get("surfId") for op in feed.get("operators", [])}
+        assert "surf/topic/technology" in stored
+        assert "surf/hashtag/opensource" in stored
+
+    def test_03_delete(self, client):
+        if not self.feed_id:
+            pytest.skip("No feed created")
+        try:
+            retry_on_rate_limit(lambda: client.custom_feeds.delete(self.feed_id))
+        except SurfNotFoundError:
+            pass
 
 
 class TestCustomFeedThemes:

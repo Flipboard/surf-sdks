@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Iterator, Optional
+from dataclasses import dataclass, field
+from typing import Iterator, List, Optional
 
 import requests
 
@@ -818,6 +819,58 @@ class FeedTheme:
         return theme
 
 
+@dataclass
+class FeedFilter:
+    """A filter applied to a custom-feed operator.
+
+    Args:
+        surf_id: SurfId of the source to filter on.
+        operator: Filter role (``"source"``, ``"include"``, ``"exclude"``, etc.).
+    """
+
+    surf_id: str
+    operator: str = "source"
+
+    def to_dict(self) -> dict:
+        return {"surfId": self.surf_id, "operator": self.operator}
+
+
+@dataclass
+class NewFeedOperator:
+    """Writable shape for a custom-feed operator — the fields the API accepts on create.
+
+    Server-assigned fields (``id``, ``created``, ``last_modified``) are not included.
+
+    Common case::
+
+        NewFeedOperator.source("surf/topic/artificial-intelligence")
+
+    Typed operator::
+
+        NewFeedOperator.of("surf/hashtag/cats", operator="include")
+    """
+
+    surf_id: str
+    operator: str = "source"
+    filters: Optional[List[FeedFilter]] = field(default=None)
+
+    @staticmethod
+    def source(surf_id: str) -> "NewFeedOperator":
+        """A ``source`` operator for *surf_id* with no filters."""
+        return NewFeedOperator(surf_id=surf_id)
+
+    @staticmethod
+    def of(surf_id: str, operator: str) -> "NewFeedOperator":
+        """An operator of the given role for *surf_id* with no filters."""
+        return NewFeedOperator(surf_id=surf_id, operator=operator)
+
+    def to_dict(self) -> dict:
+        d: dict = {"surfId": self.surf_id, "operator": self.operator}
+        if self.filters:
+            d["filters"] = [f.to_dict() for f in self.filters]
+        return d
+
+
 class _CustomFeedsAPI:
     """Custom feed operations (write:feeds scope).
 
@@ -835,27 +888,55 @@ class _CustomFeedsAPI:
         """Get a custom feed by ID."""
         return self._c._get(f"/custom/{feed_id}")
 
-    def create(self, title: str, description: str = None, operators: list = None,
+    def create(self, title: str, description: str = None,
+               operators: Optional[List] = None,
                theme: FeedTheme = None, image: str = None) -> dict:
         """Create a new custom feed.
 
         Args:
             title: Feed title (required).
             description: Feed description.
-            operators: List of operator dicts defining feed sources.
+            operators: List of :class:`NewFeedOperator` objects or raw dicts
+                defining feed sources.
             theme: Optional FeedTheme to set the feed's visual appearance.
             image: Optional cover image URL (used for share cards / OG tags).
         """
-        body = {"title": title}
+        body: dict = {"title": title}
         if description:
             body["description"] = description
         if operators:
-            body["operators"] = operators
+            body["operators"] = [
+                op.to_dict() if isinstance(op, NewFeedOperator) else op
+                for op in operators
+            ]
         if image:
             body["image"] = image
         if theme:
             body["theme"] = theme.to_dict()
         return self._c._post("/custom", json=body)
+
+    def create_with_operators(self, title: str, operators: List[NewFeedOperator],
+                              description: str = None) -> dict:
+        """Create a new custom feed with typed operator objects.
+
+        Convenience overload that accepts :class:`NewFeedOperator` instances
+        instead of raw dicts::
+
+            client.custom_feeds.create_with_operators(
+                "AI News",
+                operators=[
+                    NewFeedOperator.source("surf/topic/artificial-intelligence"),
+                    NewFeedOperator.source("surf/hashtag/machinelearning"),
+                ],
+                description="Latest AI",
+            )
+
+        Args:
+            title: Feed title (required).
+            operators: One or more :class:`NewFeedOperator` instances.
+            description: Optional feed description.
+        """
+        return self.create(title, description=description, operators=operators)
 
     def update(self, feed_id: str, theme: FeedTheme = None, **kwargs) -> dict:
         """Update a custom feed.
