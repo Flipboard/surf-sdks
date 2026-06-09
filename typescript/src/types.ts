@@ -15,6 +15,8 @@ export interface SurfClientOptions {
   timeout?: number;
   /** Custom fetch implementation (default: global fetch) */
   fetch?: typeof fetch;
+  /** Number of retries after the initial attempt on 429, 5xx, or transient network errors (default: 3, i.e. up to 4 total attempts). Set to 0 to disable. */
+  maxRetries?: number;
 }
 
 /** API error response body. */

@@ -86,6 +86,7 @@ export class SurfClient {
   private readonly apiKey: string;
   private readonly baseUrl: string;
   private readonly timeout: number;
+  private readonly maxRetries: number;
   private readonly _fetch: typeof fetch;
 
   /** Last rate limit info from any request. */
@@ -108,6 +109,8 @@ export class SurfClient {
     this.apiKey = options.apiKey;
     this.baseUrl = (options.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, '');
     this.timeout = options.timeout ?? 30_000;
+    const r = options.maxRetries ?? 3;
+    this.maxRetries = Number.isFinite(r) ? Math.max(0, Math.floor(r)) : 3;
     this._fetch = options.fetch ?? globalThis.fetch;
 
     this.feeds = new FeedsAPI(this);
@@ -152,43 +155,76 @@ export class SurfClient {
       headers['Accept'] = 'application/json';
     }
 
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeout);
+    const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
+    let lastErr: unknown;
 
-    try {
-      const resp = await this._fetch(url, {
-        method,
-        headers,
-        body,
-        signal: controller.signal,
-      });
+    for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
+      let fetchSucceeded = false;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), this.timeout);
+      try {
+        const resp = await this._fetch(url, {
+          method,
+          headers,
+          body,
+          signal: controller.signal,
+        });
 
-      this.rateLimit = {
-        limit: parseInt(resp.headers.get('X-RateLimit-Limit') ?? '0'),
-        remaining: parseInt(resp.headers.get('X-RateLimit-Remaining') ?? '0'),
-        reset: resp.headers.get('X-RateLimit-Reset'),
-      };
+        this.rateLimit = {
+          limit: parseInt(resp.headers.get('X-RateLimit-Limit') ?? '0'),
+          remaining: parseInt(resp.headers.get('X-RateLimit-Remaining') ?? '0'),
+          reset: resp.headers.get('X-RateLimit-Reset'),
+        };
 
-      if (!resp.ok) {
-        let errBody: Partial<SurfErrorBody> = {};
-        try { errBody = await resp.json(); } catch {}
-        const msg = errBody.error_description ?? errBody.error ?? resp.statusText;
-        if (resp.status === 401) throw new SurfAuthError(msg);
-        if (resp.status === 403) throw new SurfScopeError(msg);
-        if (resp.status === 404) throw new SurfNotFoundError(msg);
-        if (resp.status === 429) {
-          const retry = parseInt(resp.headers.get('Retry-After') ?? '60');
-          throw new SurfRateLimitError(msg, retry);
+        if (resp.status === 429 && attempt < this.maxRetries) {
+          clearTimeout(timer);
+          const raw = parseInt(resp.headers.get('Retry-After') ?? '');
+          const retryAfter = Math.min(Number.isFinite(raw) && raw > 0 ? raw : Math.pow(2, attempt), 60);
+          try { await resp.body?.cancel(); } catch {}
+          await sleep(retryAfter * 1_000);
+          continue;
         }
-        throw new SurfAPIError(msg, resp.status, errBody.error);
-      }
 
-      if (opts?.raw) return resp as unknown as T;
-      if (resp.status === 204) return {} as T;
-      return await resp.json() as T;
-    } finally {
-      clearTimeout(timer);
+        if (resp.status >= 500 && attempt < this.maxRetries) {
+          clearTimeout(timer);
+          try { await resp.body?.cancel(); } catch {}
+          await sleep(Math.min(Math.pow(2, attempt), 60) * 1_000);
+          continue;
+        }
+
+        if (!resp.ok) {
+          let errBody: Partial<SurfErrorBody> = {};
+          try { errBody = await resp.json(); } catch {}
+          const msg = errBody.error_description ?? errBody.error ?? resp.statusText;
+          if (resp.status === 401) throw new SurfAuthError(msg);
+          if (resp.status === 403) throw new SurfScopeError(msg);
+          if (resp.status === 404) throw new SurfNotFoundError(msg);
+          if (resp.status === 429) {
+            const rawRetry = parseInt(resp.headers.get('Retry-After') ?? '');
+            const retry = Number.isFinite(rawRetry) && rawRetry > 0 ? rawRetry : 60;
+            throw new SurfRateLimitError(msg, retry);
+          }
+          throw new SurfAPIError(msg, resp.status, errBody.error);
+        }
+
+        if (opts?.raw) return resp as unknown as T;
+        if (resp.status === 204) return {} as T;
+        // Tag successful-fetch scope: errors below (e.g. JSON parse) must not be retried.
+        fetchSucceeded = true;
+        return await resp.json() as T;
+      } catch (e) {
+        if (e instanceof SurfAPIError) throw e;
+        if (fetchSucceeded) throw e;
+        lastErr = e;
+        if (attempt < this.maxRetries) {
+          clearTimeout(timer);
+          await sleep(Math.min(Math.pow(2, attempt), 60) * 1_000);
+        }
+      } finally {
+        clearTimeout(timer);
+      }
     }
+    throw lastErr ?? new SurfAPIError('Request failed', 0, 'connection_error');
   }
 
   /** @internal */

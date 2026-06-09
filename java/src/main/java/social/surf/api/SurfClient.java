@@ -67,6 +67,7 @@ public class SurfClient {
     private final String apiKey;
     private final String baseUrl;
     private final Duration timeout;
+    private final int maxRetries;
     private final HttpClient httpClient;
     private final ObjectMapper mapper;
 
@@ -96,12 +97,26 @@ public class SurfClient {
      * @param timeoutSeconds per-request timeout in seconds
      */
     public SurfClient(String apiKey, String baseUrl, int timeoutSeconds) {
+        this(apiKey, baseUrl, timeoutSeconds, 3);
+    }
+
+    /**
+     * @param apiKey         API token ({@code surf_sk_live_...} or {@code surf_sk_test_...})
+     * @param baseUrl        base URL (default {@value #DEFAULT_BASE_URL})
+     * @param timeoutSeconds per-request timeout in seconds
+     * @param maxRetries     max retry attempts on 429 or 5xx (0 to disable, default 3)
+     */
+    public SurfClient(String apiKey, String baseUrl, int timeoutSeconds, int maxRetries) {
         if (apiKey == null || apiKey.isEmpty()) {
             throw new IllegalArgumentException("apiKey must not be null or empty");
+        }
+        if (maxRetries < 0) {
+            throw new IllegalArgumentException("maxRetries must be >= 0");
         }
         this.apiKey = apiKey;
         this.baseUrl = stripTrailingSlashes(baseUrl);
         this.timeout = Duration.ofSeconds(timeoutSeconds);
+        this.maxRetries = maxRetries;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(CONNECT_TIMEOUT)
                 .followRedirects(HttpClient.Redirect.NORMAL)
@@ -254,6 +269,9 @@ public class SurfClient {
      * POST that streams the response body line by line — used for Server-Sent Event
      * endpoints. The returned stream reads lazily from the connection; consume it fully
      * (or close it) to release the connection.
+     *
+     * <p>Retry logic is intentionally not applied here (mirrors Python's {@code _request_raw}):
+     * streaming responses are not idempotent to re-request mid-stream.
      */
     Stream<String> postLines(String path, Object json, int timeoutSeconds) {
         HttpRequest req = buildRequest("POST", path, null, json, Duration.ofSeconds(timeoutSeconds));
@@ -275,7 +293,12 @@ public class SurfClient {
         return resp.body().filter(line -> !line.isEmpty());
     }
 
-    /** Build a multipart/form-data POST with a single file field named {@code file}. */
+    /**
+     * Build a multipart/form-data POST with a single file field named {@code file}.
+     *
+     * <p>Retry logic is intentionally not applied here (mirrors Python's {@code _request_raw}):
+     * binary uploads are handled by callers that manage their own retry/resume strategy.
+     */
     <T> T uploadMultipart(String path, byte[] fileBytes, String filename, String contentType, Class<T> type) {
         String boundary = "----SurfBoundary" + UUID.randomUUID().toString().replace("-", "");
         ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -340,10 +363,52 @@ public class SurfClient {
     private HttpResponse<byte[]> execute(String method, String path, Map<String, Object> params,
                                          Object jsonBody, Duration requestTimeout) {
         HttpRequest req = buildRequest(method, path, params, jsonBody, requestTimeout);
-        HttpResponse<byte[]> resp = send(req, path);
-        this.rateLimit = new RateLimitInfo(resp.headers());
-        checkErrors(resp.statusCode(), resp.headers(), resp.body());
-        return resp;
+        for (int attempt = 0; attempt <= maxRetries; attempt++) {
+            HttpResponse<byte[]> resp;
+            try {
+                resp = httpClient.send(req, HttpResponse.BodyHandlers.ofByteArray());
+            } catch (IOException e) {
+                if (attempt < maxRetries) {
+                    sleepSeconds(Math.min(1L << Math.min(attempt, 6), 60L));
+                    continue;
+                }
+                throw new SurfAPIError("Request to " + path + " failed: " + e.getMessage());
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new SurfAPIError("Request to " + path + " was interrupted");
+            }
+
+            this.rateLimit = new RateLimitInfo(resp.headers());
+            int status = resp.statusCode();
+
+            if (status == 429 && attempt < maxRetries) {
+                int retryAfter = resp.headers().firstValue("Retry-After").map(s -> {
+                    try { return Integer.parseInt(s); } catch (NumberFormatException ex) { return 0; }
+                }).orElse(0);
+                if (retryAfter <= 0) retryAfter = 1 << Math.min(attempt, 6);
+                if (retryAfter > 60) retryAfter = 60;
+                sleepSeconds(retryAfter);
+                continue;
+            }
+
+            if (status >= 500 && attempt < maxRetries) {
+                sleepSeconds(Math.min(1L << Math.min(attempt, 6), 60L));
+                continue;
+            }
+
+            checkErrors(status, resp.headers(), resp.body());
+            return resp;
+        }
+        throw new SurfAPIError("Request to " + path + " failed after " + (maxRetries + 1) + " attempts");
+    }
+
+    private void sleepSeconds(long seconds) {
+        try {
+            Thread.sleep(seconds * 1_000L);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            throw new SurfAPIError("Request interrupted during retry backoff");
+        }
     }
 
     private HttpResponse<byte[]> send(HttpRequest req, String path) {
