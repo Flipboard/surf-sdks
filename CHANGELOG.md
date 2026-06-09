@@ -7,6 +7,10 @@ All notable changes to the Surf API SDKs will be documented here. All SDKs share
 ## Unreleased
 
 ### Added
+- **Typed operator helpers** — Python, TypeScript, and Go now have a typed `NewFeedOperator` / `FeedOperator` construct matching Java's existing `NewFeedOperator` record, so callers no longer have to hand-build raw maps when creating feeds with sources.
+  - Python: `NewFeedOperator` dataclass with `source()` / `of()` factory methods and `to_dict()`; `FeedFilter` dataclass with `to_dict()`; both exported from `surf_api`; `create()` auto-serializes `NewFeedOperator` objects alongside raw dicts; new `create_with_operators(title, operators, description=None)` convenience method on `custom_feeds`
+  - TypeScript: exported `FeedOperator` interface (`surfId`, optional `operator`, optional `filters`) with literal-preserving `operator` type (`string & {}`); `create()` keeps `operators?: unknown[]` (fully backwards-compatible); `createWithOperators(title, operators, description?)` is the strongly-typed entry point
+  - Go: `Operator` string type with named constants (`OperatorSource`, `OperatorInclude`, `OperatorFilteringInclude`, `OperatorExclude`, `OperatorScore`); `FeedOperator` and `FeedOperatorFilter` structs with `omitempty` JSON tags; `NewFeedOperatorSource(surfID)` and `NewFeedOperator(surfID, op)` constructor funcs; variadic `CreateWithOperators(title, description string, operators ...FeedOperator)` method
 - **SurfAgent** -- AI agent with Surf MCP tools pre-loaded, powered by the Claude Agent SDK. Available in **Python and TypeScript only** (Go and Java do not include agent functionality).
   - Python: `SurfAgent` class in `surf_api.agent` with `run()` and `stream()` methods
   - TypeScript: `SurfAgent` class exported from `@surf/api` with `run()` and `stream()` methods

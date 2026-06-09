@@ -1,6 +1,6 @@
 """Surf API Python SDK — programmatic access to the Surf social platform."""
 
-from .client import SurfClient
+from .client import SurfClient, FeedTheme, NewFeedOperator, FeedFilter
 from .models import (
     Post,
     FeedMeta,
@@ -28,6 +28,9 @@ from .exceptions import (
 __version__ = "1.0.0"
 __all__ = [
     "SurfClient",
+    "FeedTheme",
+    "NewFeedOperator",
+    "FeedFilter",
     "AsyncSurfClient",
     "SurfAgent",
     "SurfOAuth",
