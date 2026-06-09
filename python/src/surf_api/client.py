@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Iterator, List, Optional
+from typing import Any, Iterator, List, Optional
 
 import requests
 
@@ -177,24 +177,51 @@ class SurfClient:
             raise SurfRateLimitError(msg, retry_after=retry_after, **kwargs)
         raise SurfAPIError(msg, **kwargs)
 
-    def _paginate(self, path: str, key: str, params: dict, limit: Optional[int] = None) -> Iterator[dict]:
-        """Auto-paginate through results."""
+    def paginate(self, path: str, key: str, params: Optional[dict] = None, limit: Optional[int] = None) -> Iterator[Any]:
+        """Auto-paginate through results, yielding individual items.
+
+        Args:
+            path: API path (e.g. ``/feed/posts``)
+            key: Response key whose value is the list of items (e.g. ``"posts"``)
+            params: Base query parameters (copied; not mutated)
+            limit: Maximum items to yield. ``None``, ``0``, or any negative
+                value means no limit.
+        """
         params = dict(params or {})
         fetched = 0
         while True:
+            if limit is not None and limit > 0 and fetched >= limit:
+                return
             data = self._get(path, params)
-            items = data.get(key, [])
-            if not items:
+            if not isinstance(data, dict):
+                raise SurfAPIError(
+                    f"paginate: expected a JSON object response from {path!r}, "
+                    f"got {type(data).__name__}",
+                    status_code=0, error_code="invalid_response",
+                )
+            if key not in data:
                 break
-            for item in items:
+            raw_items = data[key]
+            if not isinstance(raw_items, list):
+                raise SurfAPIError(
+                    f"paginate: expected {key!r} to be a list, "
+                    f"got {type(raw_items).__name__}",
+                    status_code=0, error_code="invalid_response",
+                )
+            if not raw_items:
+                break
+            for item in raw_items:
                 yield item
                 fetched += 1
-                if limit and fetched >= limit:
+                if limit is not None and limit > 0 and fetched >= limit:
                     return
             cursor = data.get("cursor") or data.get("next_cursor")
             if not cursor:
                 break
             params["cursor"] = cursor
+
+    # Private alias for backward compatibility
+    _paginate = paginate
 
 
 # ==========================================================================

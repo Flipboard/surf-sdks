@@ -6,11 +6,20 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 	"testing"
 	"time"
 )
+
+// isBareArrayError reports whether err indicates the paginator received a
+// top-level JSON array instead of an object. Uses errors.As on the wrapped
+// *json.UnmarshalTypeError so the check is stable across Go versions.
+func isBareArrayError(err error) bool {
+	var ute *json.UnmarshalTypeError
+	return errors.As(err, &ute) && ute.Value == "array"
+}
 
 // testClient returns a configured Client, skipping the test if SURF_API_TEST_TOKEN is not set.
 func testClient(t *testing.T) *Client {
@@ -613,6 +622,55 @@ func TestIntegration(t *testing.T) {
 			}
 			if len(raw) == 0 {
 				t.Error("Expected non-empty feed summary")
+			}
+		})
+	})
+
+	// =====================================================================
+	// 6b. Paginator
+	// =====================================================================
+	t.Run("Paginator", func(t *testing.T) {
+		t.Run("RespectsLimit", func(t *testing.T) {
+			// Paginate() targets object-response endpoints ({"key": [...], "cursor": "..."}).
+			// /feed/posts may return a bare JSON array on some server configs.
+			// In that case Next() returns false with a parse error — acceptable behavior.
+			pager := client.Paginate("/feed/posts", "posts",
+				url.Values{"surf_id": {"surf/topic/technology"}, "limit": {"2"}}, 4)
+			var items []json.RawMessage
+			for pager.Next() {
+				items = append(items, pager.Item())
+			}
+			if err := pager.Err(); err != nil {
+				if isBareArrayError(err) {
+					t.Skipf("Paginator skipped: endpoint returned a bare array (paginate() requires an object response): %v", err)
+				}
+				t.Fatalf("Paginator unexpected error: %v", err)
+			}
+			if len(items) > 4 {
+				t.Errorf("limit=4 must cap results, got %d", len(items))
+			}
+			t.Logf("Paginator yielded %d item(s)", len(items))
+		})
+
+		t.Run("MissingKeyYieldsNothing", func(t *testing.T) {
+			// A key absent from the response must yield 0 items without error
+			// (assuming the endpoint returns an object; bare-array endpoints
+			// produce a parse error which we log and skip).
+			pager := client.Paginate("/feed/posts", "nonexistent_key_xyz",
+				url.Values{"surf_id": {"surf/topic/technology"}}, 0)
+			count := 0
+			for pager.Next() {
+				pager.Item()
+				count++
+			}
+			if err := pager.Err(); err != nil {
+				if isBareArrayError(err) {
+					t.Skipf("Paginator skipped: endpoint returned a bare array (paginate() requires an object response): %v", err)
+				}
+				t.Fatalf("Paginator unexpected error: %v", err)
+			}
+			if count != 0 {
+				t.Errorf("missing key should yield 0 items, got %d", count)
 			}
 		})
 	})

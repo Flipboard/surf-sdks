@@ -63,6 +63,23 @@ class TestFeeds:
         posts = retry_on_rate_limit(lambda: client.feeds.get_posts("surf/topic/technology", limit=3, sort="recent"))
         assert isinstance(posts, list)
 
+    def test_iter_posts_yields_items_up_to_limit(self, client):
+        posts = retry_on_rate_limit(
+            lambda: list(client.feeds.iter_posts("surf/topic/technology", limit=5, page_size=3))
+        )
+        assert isinstance(posts, list)
+        if not posts:
+            pytest.skip("Feed returned no posts in this environment")
+        assert len(posts) <= 5, f"limit=5 must be respected, got {len(posts)}"
+
+    def test_iter_posts_respects_page_size(self, client):
+        # page_size=2 with limit=4 requires ≥2 API calls to accumulate posts.
+        # We just verify it terminates and respects limit.
+        posts = retry_on_rate_limit(
+            lambda: list(client.feeds.iter_posts("surf/topic/technology", limit=4, page_size=2))
+        )
+        assert len(posts) <= 4, f"limit=4 must be respected, got {len(posts)}"
+
 
 # ---------------------------------------------------------------------------
 # Search
@@ -353,3 +370,57 @@ class TestErrors:
         assert rl is not None
         # Headers may not be present in all environments
         assert rl.limit >= 0
+
+
+# ---------------------------------------------------------------------------
+# Paginate
+# ---------------------------------------------------------------------------
+
+class TestPaginate:
+    """Tests for the public paginate() helper on SurfClient.
+
+    paginate() is designed for endpoints that return JSON objects of the form
+    {"<key>": [...], "cursor": "..."}. Bare-array endpoints now raise SurfAPIError
+    with error_code="invalid_response" rather than a generic AttributeError.
+    """
+
+    def test_paginate_respects_limit(self, client):
+        # paginate() with limit=3 must yield ≤3 items and not raise.
+        try:
+            items = retry_on_rate_limit(lambda: list(client.paginate(
+                "/feed/posts", "posts",
+                {"surf_id": "surf/topic/technology", "limit": 2},
+                limit=3,
+            )))
+        except SurfAPIError as e:
+            if e.error_code == "invalid_response":
+                pytest.skip("Endpoint returns a bare array; paginate() requires an object response")
+            raise
+        assert len(items) <= 3, f"limit=3 should be respected, got {len(items)}"
+
+    def test_paginate_private_alias_is_callable(self, client):
+        # _paginate is a backward-compat alias; verify it still works.
+        try:
+            items = retry_on_rate_limit(lambda: list(client._paginate(
+                "/feed/posts", "posts",
+                {"surf_id": "surf/topic/technology", "limit": 2},
+                limit=2,
+            )))
+        except SurfAPIError as e:
+            if e.error_code == "invalid_response":
+                pytest.skip("Endpoint returns a bare array; paginate() requires an object response")
+            raise
+        assert len(items) <= 2, f"_paginate limit=2 must be respected, got {len(items)}"
+
+    def test_paginate_missing_key_yields_nothing(self, client):
+        # A key absent from the response must yield 0 items without error.
+        try:
+            items = retry_on_rate_limit(lambda: list(client.paginate(
+                "/feed/posts", "nonexistent_key_xyz",
+                {"surf_id": "surf/topic/technology"},
+            )))
+        except SurfAPIError as e:
+            if e.error_code == "invalid_response":
+                pytest.skip("Endpoint returns a bare array; paginate() requires an object response")
+            raise
+        assert len(items) == 0, f"missing key should yield 0 items, got {len(items)}"

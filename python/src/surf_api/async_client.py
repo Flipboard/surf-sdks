@@ -17,7 +17,7 @@ Usage::
 from __future__ import annotations
 
 import asyncio
-from typing import AsyncIterator, Optional
+from typing import Any, AsyncIterator, Optional
 
 try:
     import httpx
@@ -183,6 +183,50 @@ class AsyncSurfClient:
             retry_after = resp.headers.get("retry-after")
             raise SurfRateLimitError(msg, retry_after=retry_after, **kwargs)
         raise SurfAPIError(msg, **kwargs)
+
+    async def paginate(self, path: str, key: str, params: Optional[dict] = None,
+                       limit: Optional[int] = None) -> AsyncIterator[Any]:
+        """Auto-paginate through results, yielding individual items.
+
+        Args:
+            path: API path (e.g. ``/feed/posts``)
+            key: Response key whose value is the list of items (e.g. ``"posts"``)
+            params: Base query parameters (copied; not mutated)
+            limit: Maximum items to yield. ``None``, ``0``, or any negative
+                value means no limit.
+        """
+        params = dict(params or {})
+        fetched = 0
+        while True:
+            if limit is not None and limit > 0 and fetched >= limit:
+                return
+            data = await self._get(path, params)
+            if not isinstance(data, dict):
+                raise SurfAPIError(
+                    f"paginate: expected a JSON object response from {path!r}, "
+                    f"got {type(data).__name__}",
+                    status_code=0, error_code="invalid_response",
+                )
+            if key not in data:
+                break
+            raw_items = data[key]
+            if not isinstance(raw_items, list):
+                raise SurfAPIError(
+                    f"paginate: expected {key!r} to be a list, "
+                    f"got {type(raw_items).__name__}",
+                    status_code=0, error_code="invalid_response",
+                )
+            if not raw_items:
+                break
+            for item in raw_items:
+                yield item
+                fetched += 1
+                if limit is not None and limit > 0 and fetched >= limit:
+                    return
+            cursor = data.get("cursor") or data.get("next_cursor")
+            if not cursor:
+                break
+            params["cursor"] = cursor
 
 
 # ==========================================================================

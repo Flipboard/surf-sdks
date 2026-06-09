@@ -15,6 +15,7 @@ import social.surf.api.model.FeedSummary;
 import social.surf.api.model.FeedTheme;
 import social.surf.api.model.NewFeedOperator;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -454,6 +455,38 @@ class SurfApiIntegrationTest {
         } catch (SurfAPIError e) {
             skipOnScopeOrAuth(e);
         }
+    }
+
+    // ======================================================================
+    // 6b. paginate() smoke test
+    // ======================================================================
+
+    @Test
+    @Order(650)
+    void paginateReturnsItemsOrStopsCleanly() {
+        // paginate() works for endpoints that return {"<key>": [...], "cursor": "..."}.
+        // Probe the search response to find the list-valued key, then paginate with it.
+        Map<String, Object> sample = client.search.feeds("technology");
+        assertNotNull(sample, "search should return a result");
+
+        String itemKey = null;
+        for (Map.Entry<String, Object> entry : sample.entrySet()) {
+            if (entry.getValue() instanceof List) {
+                itemKey = entry.getKey();
+                break;
+            }
+        }
+        Assumptions.assumeTrue(itemKey != null,
+                "Search response has no list-valued key — cannot test paginate");
+
+        final String key = itemKey;
+        List<Object> items = new ArrayList<>();
+        for (Object item : client.paginate("/search", key,
+                Map.of("q", "technology", "type", "feeds", "limit", "2"), 4)) {
+            items.add(item);
+        }
+
+        assertTrue(items.size() <= 4, "limit=4 must be respected, got " + items.size());
     }
 
     // ======================================================================
