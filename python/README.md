@@ -159,7 +159,7 @@ async def main():
 asyncio.run(main())
 ```
 
-The agent connects to Surf via MCP with 19 read-only tools enabled by default. To also allow posting, favouriting, and feed creation (23 tools total), set `allow_writes=True`:
+The agent connects to Surf via MCP with 20 read-only tools enabled by default. To also allow posting, favouriting, and feed creation (24 tools total), set `allow_writes=True`:
 
 ```python
 agent = SurfAgent(surf_api_key="surf_sk_live_your_token", allow_writes=True)
