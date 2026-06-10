@@ -246,6 +246,144 @@ func atoi(s string) int {
 	return n
 }
 
+// Paginator iterates lazily over a cursor-paginated endpoint.
+// Call Next() to check whether an item is available (it fetches the next page
+// when the buffer is exhausted), then call Item() at most once to retrieve the
+// item and advance the pointer. It is safe to break out of the loop without
+// calling Item(). Check Err() after the loop.
+//
+//	pager := client.Paginate("/feed/posts", "posts", url.Values{"surf_id": {"surf/topic/technology"}}, 0)
+//	for pager.Next() {
+//	    var post map[string]interface{}
+//	    _ = json.Unmarshal(pager.Item(), &post)
+//	}
+//	if err := pager.Err(); err != nil { ... }
+type Paginator struct {
+	c      *Client
+	path   string
+	key    string
+	params url.Values
+	limit  int // ≤ 0 means no limit
+
+	buf       []json.RawMessage
+	pos       int
+	done      bool
+	fetched   int
+	err       error
+	itemReady bool // true after Next() returns true; cleared by Item()
+}
+
+// Paginate returns a Paginator that lazily walks a cursor-paginated endpoint.
+// limit ≤ 0 means no limit. params is shallow-copied and not mutated.
+func (c *Client) Paginate(path, key string, params url.Values, limit int) *Paginator {
+	cp := url.Values{}
+	for k, v := range params {
+		cp[k] = append([]string(nil), v...)
+	}
+	return &Paginator{c: c, path: path, key: key, params: cp, limit: limit}
+}
+
+// Next returns true if an item is available. It fetches the next page when the
+// current page buffer is exhausted. Returns false when there are no more items
+// or an error occurs. Calling Next() again before calling Item() is a misuse
+// and sets Err(); it is safe to call Next() without Item() only when breaking
+// out of the loop early.
+func (pg *Paginator) Next() bool {
+	if pg.err != nil {
+		return false
+	}
+	if pg.limit > 0 && pg.fetched >= pg.limit {
+		return false
+	}
+	// Drain the current page buffer before checking done — the final page
+	// sets done=true but may still have unread items.
+	if pg.pos < len(pg.buf) {
+		if pg.itemReady {
+			// Next() called again without consuming the previous item via Item().
+			pg.err = fmt.Errorf("surf: paginate: Next() called again without a preceding Item() call")
+			return false
+		}
+		pg.itemReady = true
+		return true
+	}
+	if pg.done {
+		return false
+	}
+	// Fetch the next page.
+	raw, err := pg.c.get(pg.path, pg.params)
+	if err != nil {
+		pg.err = err
+		return false
+	}
+	var page map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &page); err != nil {
+		pg.err = fmt.Errorf("surf: paginate: parse response: %w", err)
+		return false
+	}
+	keyData, ok := page[pg.key]
+	if !ok {
+		pg.done = true
+		return false
+	}
+	var items []json.RawMessage
+	if err := json.Unmarshal(keyData, &items); err != nil {
+		pg.err = fmt.Errorf("surf: paginate: key %q is not an array: %w", pg.key, err)
+		return false
+	}
+	if len(items) == 0 {
+		pg.done = true
+		return false
+	}
+	pg.buf = items
+	pg.pos = 0
+	pg.itemReady = true
+	// Extract cursor for the next page. JSON null is treated as absent
+	// (no more pages) to match Python/TypeScript/Java behaviour.
+	var cursor string
+	for _, field := range []string{"cursor", "next_cursor"} {
+		if v, ok := page[field]; ok {
+			if string(v) == "null" {
+				continue // treat null as absent; check next_cursor
+			}
+			if err := json.Unmarshal(v, &cursor); err != nil {
+				pg.err = fmt.Errorf("surf: paginate: parse %q field: %w", field, err)
+				return false
+			}
+			if cursor != "" {
+				break
+			}
+		}
+	}
+	if cursor == "" {
+		pg.done = true // no more pages after this batch
+	} else {
+		pg.params.Set("cursor", cursor)
+	}
+	return true
+}
+
+// Item returns the current item and advances the internal pointer.
+// May be called at most once after a successful Next(). Calling Item() without
+// a preceding Next(), or calling it a second time before the next Next(), sets
+// Err() and returns nil. It is safe to call Next() without calling Item()
+// (e.g., when breaking out of the loop early).
+func (pg *Paginator) Item() json.RawMessage {
+	if !pg.itemReady {
+		pg.err = fmt.Errorf("surf: paginate: Item() called without a preceding Next() or called more than once per Next()")
+		return nil
+	}
+	pg.itemReady = false
+	item := pg.buf[pg.pos]
+	pg.pos++
+	pg.fetched++
+	return item
+}
+
+// Err returns the first error encountered, or nil.
+func (pg *Paginator) Err() error {
+	return pg.err
+}
+
 // PostsOptions for feed post queries.
 type PostsOptions struct {
 	Limit    int

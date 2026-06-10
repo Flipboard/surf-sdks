@@ -490,6 +490,56 @@ describe('AI', { concurrency: false }, () => {
 });
 
 // ---------------------------------------------------------------------------
+// 6b. Paginator
+// ---------------------------------------------------------------------------
+
+describe('Paginator', { concurrency: false }, () => {
+  // paginate() targets object-response endpoints: {"<key>": [...], "cursor": "..."}.
+  // /feed/posts may return a bare array on some server configs, in which case
+  // paginate() throws SurfAPIError(errorCode="invalid_response"). Both tests
+  // catch that error and return early (skip), consistent with Go/Python handling.
+
+  it('should respect limit and not throw', async (t) => {
+    const items: any[] = [];
+    try {
+      for await (const post of client.paginate(
+        '/feed/posts', 'posts',
+        { surf_id: 'surf/topic/technology', limit: 2 },
+        4,
+      )) {
+        items.push(post);
+      }
+    } catch (err: any) {
+      if (err?.errorCode === 'invalid_response') {
+        t.skip('Endpoint returns a bare array; paginate() requires an object response');
+        return;
+      }
+      throw err;
+    }
+    assert.ok(items.length <= 4, `limit=4 must be respected, got ${items.length}`);
+  });
+
+  it('should stop cleanly for a missing key', async (t) => {
+    const items: any[] = [];
+    try {
+      for await (const item of client.paginate(
+        '/feed/posts', 'nonexistent_key_xyz',
+        { surf_id: 'surf/topic/technology' },
+      )) {
+        items.push(item);
+      }
+    } catch (err: any) {
+      if (err?.errorCode === 'invalid_response') {
+        t.skip('Endpoint returns a bare array; paginate() requires an object response');
+        return;
+      }
+      throw err;
+    }
+    assert.strictEqual(items.length, 0, 'Missing key should yield nothing');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // 7. Error Handling
 // ---------------------------------------------------------------------------
 

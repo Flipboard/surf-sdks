@@ -7,6 +7,12 @@ All notable changes to the Surf API SDKs will be documented here. All SDKs share
 ## Unreleased
 
 ### Added
+- **Public pagination helper** — All four SDKs now expose a consistent `paginate()` method for walking cursor-paginated endpoints that return JSON objects (`{"<key>": [...], "cursor": "..."}`). Both `cursor` and `next_cursor` response fields are supported. An optional `limit` parameter caps total items yielded regardless of page count.
+  - Python (sync): `SurfClient.paginate(path, key, params, limit=None)` — generator; `_paginate` retained as a backward-compatible alias
+  - Python (async): `AsyncSurfClient.paginate(path, key, params, limit=None)` — async generator
+  - TypeScript: `client.paginate<T>(path, key, params?, limit?)` — `AsyncGenerator<T>`, usable with `for await...of`
+  - Go: `client.Paginate(path, key string, params url.Values, limit int) *Paginator` — `Next() bool` checks whether an item is available (fetches the next page when the buffer is exhausted); `Item() json.RawMessage` returns the current item, advances the internal pointer, and **enforces the call contract** — calling it without a preceding `Next()` or more than once per `Next()` sets `Err()` and returns `nil`; `Err() error` returns any fetch, parse, or misuse error; Go 1.21 compatible
+  - Java: already public since v1.0.0; no change
 - **Typed operator helpers** — Python, TypeScript, and Go now have a typed `NewFeedOperator` / `FeedOperator` construct matching Java's existing `NewFeedOperator` record, so callers no longer have to hand-build raw maps when creating feeds with sources.
   - Python: `NewFeedOperator` dataclass with `source()` / `of()` factory methods and `to_dict()`; `FeedFilter` dataclass with `to_dict()`; both exported from `surf_api`; `create()` auto-serializes `NewFeedOperator` objects alongside raw dicts; new `create_with_operators(title, operators, description=None)` convenience method on `custom_feeds`
   - TypeScript: exported `FeedOperator` interface (`surfId`, optional `operator`, optional `filters`) with literal-preserving `operator` type (`string & {}`); `create()` keeps `operators?: unknown[]` (fully backwards-compatible); `createWithOperators(title, operators, description?)` is the strongly-typed entry point

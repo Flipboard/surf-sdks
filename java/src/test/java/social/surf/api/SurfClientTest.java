@@ -16,6 +16,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
@@ -375,6 +376,117 @@ class SurfClientTest {
         assertEquals("favourite", notifications.get(0).type());
         assertEquals("My Feed", notifications.get(0).referenceFeed().title());
         assertEquals(3, notifications.get(0).addDelta());
+    }
+
+    // ======================================================================
+    // paginate() unit tests
+    // ======================================================================
+
+    @Test
+    void paginateYieldsAllItemsAcrossPages() {
+        // Two-page scenario: page 1 returns 2 items + cursor; page 2 returns 1 item, no cursor.
+        java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
+        handler = ex -> {
+            int call = calls.incrementAndGet();
+            if (call == 1) {
+                assertNull(queryParam(lastQuery.get(), "cursor"), "first request must have no cursor");
+                json(ex, 200, "{\"posts\":[{\"id\":\"1\"},{\"id\":\"2\"}],\"cursor\":\"tok2\"}");
+            } else {
+                assertEquals("tok2", queryParam(lastQuery.get(), "cursor"), "second request must send cursor=tok2");
+                json(ex, 200, "{\"posts\":[{\"id\":\"3\"}]}");
+            }
+        };
+
+        List<Object> items = new ArrayList<>();
+        for (Object item : client().paginate("/feed/posts", "posts",
+                Map.of("surf_id", "surf/topic/tech"), null)) {
+            items.add(item);
+        }
+
+        assertEquals(3, items.size(), "should yield all 3 items across 2 pages");
+        assertEquals(2, calls.get(), "should make exactly 2 page requests");
+        assertEquals("/v1/feed/posts", lastPath.get());
+    }
+
+    @Test
+    void paginateLimitStopsMidPage() {
+        // Page has 3 items but limit=2: must stop after 2 items without fetching a second page.
+        java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
+        handler = ex -> {
+            calls.incrementAndGet();
+            json(ex, 200, "{\"posts\":[{\"id\":\"1\"},{\"id\":\"2\"},{\"id\":\"3\"}],\"cursor\":\"tok2\"}");
+        };
+
+        List<Object> items = new ArrayList<>();
+        for (Object item : client().paginate("/feed/posts", "posts", null, 2)) {
+            items.add(item);
+        }
+
+        assertEquals(2, items.size(), "limit=2 should stop after 2 items");
+        assertEquals(1, calls.get(), "limit mid-page must not trigger a second fetch");
+    }
+
+    @Test
+    void paginateLimitSpanningPages() {
+        // Limit=3 across two pages of 2 each: should fetch both pages but stop at 3 items.
+        java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
+        handler = ex -> {
+            int call = calls.incrementAndGet();
+            if (call == 1) {
+                json(ex, 200, "{\"posts\":[{\"id\":\"a\"},{\"id\":\"b\"}],\"cursor\":\"pg2\"}");
+            } else {
+                json(ex, 200, "{\"posts\":[{\"id\":\"c\"},{\"id\":\"d\"}],\"cursor\":\"pg3\"}");
+            }
+        };
+
+        List<Object> items = new ArrayList<>();
+        for (Object item : client().paginate("/feed/posts", "posts", null, 3)) {
+            items.add(item);
+        }
+
+        assertEquals(3, items.size(), "limit=3 should stop after 3 items");
+        assertEquals(2, calls.get(), "limit spanning pages must trigger exactly 2 fetches");
+    }
+
+    @Test
+    void paginateHandlesNextCursorField() {
+        // Some endpoints use "next_cursor" instead of "cursor" — both must be followed.
+        java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
+        handler = ex -> {
+            if (calls.incrementAndGet() == 1) {
+                json(ex, 200, "{\"posts\":[{\"id\":\"x\"},{\"id\":\"y\"}],\"next_cursor\":\"nc1\"}");
+            } else {
+                assertEquals("nc1", queryParam(lastQuery.get(), "cursor"),
+                        "next_cursor value must be forwarded as cursor param");
+                json(ex, 200, "{\"posts\":[{\"id\":\"z\"}]}");
+            }
+        };
+
+        List<Object> items = new ArrayList<>();
+        for (Object item : client().paginate("/feed/posts", "posts", null, null)) {
+            items.add(item);
+        }
+
+        assertEquals(3, items.size(), "all items from both pages must be yielded via next_cursor");
+        assertEquals(2, calls.get());
+    }
+
+    @Test
+    void paginateMissingKeyYieldsNoItems() {
+        // If the response does not contain the requested key, the iterator stops cleanly.
+        java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
+        handler = ex -> {
+            calls.incrementAndGet();
+            json(ex, 200, "{\"other_key\":[{\"id\":\"1\"}],\"cursor\":\"tok\"}");
+        };
+
+        List<Object> items = new ArrayList<>();
+        for (Object item : client().paginate("/feed/posts", "posts", null, null)) {
+            items.add(item);
+        }
+
+        assertEquals(0, items.size(), "missing key must yield no items");
+        assertEquals(1, calls.get(), "must still make one fetch to detect the empty state");
     }
 
     private static void respondText(HttpExchange ex, int status, String body) {

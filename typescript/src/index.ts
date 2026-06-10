@@ -227,6 +227,61 @@ export class SurfClient {
     throw lastErr ?? new SurfAPIError('Request failed', 0, 'connection_error');
   }
 
+  /**
+   * Auto-paginate through a cursor-paginated endpoint, yielding individual items.
+   *
+   * @param path   API path (e.g. `/feed/posts`)
+   * @param key    Response key whose value is the items array (e.g. `"posts"`)
+   * @param params Base query parameters (shallow-copied; not mutated)
+   * @param limit  Maximum items to yield. Omit, pass `undefined`, or pass a
+   *               non-positive value (`0`, negative) for no limit.
+   *
+   * @example
+   * ```ts
+   * for await (const post of client.paginate('/feed/posts', 'posts', { surf_id: 'surf/topic/technology' })) {
+   *   console.log(post);
+   * }
+   * ```
+   */
+  async *paginate<T = any>(
+    path: string,
+    key: string,
+    params?: Record<string, any>,
+    limit?: number,
+  ): AsyncGenerator<T> {
+    const p: Record<string, any> = { ...(params ?? {}) };
+    let fetched = 0;
+    while (true) {
+      if (limit != null && limit > 0 && fetched >= limit) break;
+      const data: any = await this._get(path, p);
+      if (data === null || typeof data !== 'object' || Array.isArray(data)) {
+        const kind = data === null ? 'null' : Array.isArray(data) ? 'array' : typeof data;
+        throw new SurfAPIError(
+          `paginate: expected a JSON object response from '${path}', got ${kind}`,
+          0, 'invalid_response',
+        );
+      }
+      if (!Object.prototype.hasOwnProperty.call(data, key)) break; // missing key → stop cleanly
+      if (!Array.isArray(data[key])) {
+        const valKind = data[key] === null ? 'null' : typeof data[key];
+        throw new SurfAPIError(
+          `paginate: expected '${key}' to be an array, got ${valKind}`,
+          0, 'invalid_response',
+        );
+      }
+      const items: T[] = data[key];
+      if (items.length === 0) break;
+      for (const item of items) {
+        yield item;
+        fetched++;
+        if (limit != null && limit > 0 && fetched >= limit) return;
+      }
+      const cursor = data.cursor || data.next_cursor;
+      if (!cursor) break;
+      p.cursor = cursor;
+    }
+  }
+
   /** @internal */
   _get<T = any>(path: string, params?: Record<string, any>): Promise<T> {
     return this._request<T>('GET', path, { params });
