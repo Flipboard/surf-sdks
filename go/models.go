@@ -16,6 +16,8 @@ type Post struct {
 	Account          *PostAccount      `json:"account,omitempty"`
 	Card             *Card             `json:"card,omitempty"`
 	MediaAttachments []MediaAttachment `json:"media_attachments,omitempty"`
+	Reblog           *Post             `json:"reblog,omitempty"`
+	Quote            *Post             `json:"quote,omitempty"`
 	PostType         *string           `json:"post_type,omitempty"`
 	Topics           []string          `json:"topics,omitempty"`
 	Duration         *int              `json:"duration,omitempty"`

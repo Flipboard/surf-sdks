@@ -144,6 +144,8 @@ class Post:
     account: Optional[PostAccount] = None
     card: Optional[Card] = None
     media_attachments: List[MediaAttachment] = field(default_factory=list)
+    reblog: Optional["Post"] = None
+    quote: Optional["Post"] = None
     # Surf-specific fields (from ApiResponseTransformers)
     post_type: Optional[str] = None
     topics: Optional[List[str]] = None
@@ -176,6 +178,8 @@ class Post:
                 MediaAttachment.from_dict(m) for m in d.get("media_attachments", [])
                 if m is not None
             ],
+            reblog=Post.from_dict(d.get("reblog")),
+            quote=Post.from_dict(d.get("quote")),
             post_type=d.get("post_type"),
             topics=d.get("topics"),
             vibes=d.get("vibes"),

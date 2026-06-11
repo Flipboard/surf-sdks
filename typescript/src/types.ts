@@ -127,6 +127,8 @@ export interface Post {
   account?: PostAccount;
   card?: Card;
   media_attachments?: MediaAttachment[];
+  reblog?: Post;
+  quote?: Post;
   post_type?: string;
   topics?: string[];
   vibes?: { primary?: string; scores?: Record<string, number> };
