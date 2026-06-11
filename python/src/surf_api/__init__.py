@@ -1,6 +1,6 @@
 """Surf API Python SDK — programmatic access to the Surf social platform."""
 
-from .client import SurfClient, FeedTheme, NewFeedOperator, FeedFilter
+from .client import SurfClient, SurfRTBClient, FeedTheme, NewFeedOperator, FeedFilter
 from .models import (
     Post,
     FeedMeta,
@@ -28,10 +28,12 @@ from .exceptions import (
 __version__ = "1.0.0"
 __all__ = [
     "SurfClient",
+    "SurfRTBClient",
     "FeedTheme",
     "NewFeedOperator",
     "FeedFilter",
     "AsyncSurfClient",
+    "AsyncSurfRTBClient",
     "SurfAgent",
     "SurfOAuth",
     "AsyncSurfOAuth",
@@ -63,6 +65,9 @@ def __getattr__(name):
     if name == "AsyncSurfClient":
         from .async_client import AsyncSurfClient
         return AsyncSurfClient
+    if name == "AsyncSurfRTBClient":
+        from .async_client import AsyncSurfRTBClient
+        return AsyncSurfRTBClient
     if name == "SurfAgent":
         from .agent import SurfAgent
         return SurfAgent

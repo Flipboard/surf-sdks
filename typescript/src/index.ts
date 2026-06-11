@@ -327,25 +327,25 @@ class FeedsAPI {
     return this.c._request('POST', '/statuses', { json: body, params: service ? { service } : undefined });
   }
   favourite(id: string, service?: 'bluesky' | 'mastodon') {
-    return this.c._request('POST', `/statuses/${id}/favourite`, { params: service ? { service } : undefined });
+    return this.c._request('POST', `/statuses/${encodeURIComponent(id)}/favourite`, { params: service ? { service } : undefined });
   }
   unfavourite(id: string, service?: 'bluesky' | 'mastodon') {
-    return this.c._request('POST', `/statuses/${id}/unfavourite`, { params: service ? { service } : undefined });
+    return this.c._request('POST', `/statuses/${encodeURIComponent(id)}/unfavourite`, { params: service ? { service } : undefined });
   }
   boost(id: string, service?: 'bluesky' | 'mastodon') {
-    return this.c._request('POST', `/statuses/${id}/reblog`, { params: service ? { service } : undefined });
+    return this.c._request('POST', `/statuses/${encodeURIComponent(id)}/reblog`, { params: service ? { service } : undefined });
   }
   unboost(id: string, service?: 'bluesky' | 'mastodon') {
-    return this.c._request('POST', `/statuses/${id}/unreblog`, { params: service ? { service } : undefined });
+    return this.c._request('POST', `/statuses/${encodeURIComponent(id)}/unreblog`, { params: service ? { service } : undefined });
   }
   bookmark(id: string, service?: 'bluesky' | 'mastodon') {
-    return this.c._request('POST', `/statuses/${id}/bookmark`, { params: service ? { service } : undefined });
+    return this.c._request('POST', `/statuses/${encodeURIComponent(id)}/bookmark`, { params: service ? { service } : undefined });
   }
   unbookmark(id: string, service?: 'bluesky' | 'mastodon') {
-    return this.c._request('POST', `/statuses/${id}/unbookmark`, { params: service ? { service } : undefined });
+    return this.c._request('POST', `/statuses/${encodeURIComponent(id)}/unbookmark`, { params: service ? { service } : undefined });
   }
   deletePost(id: string, service?: 'bluesky' | 'mastodon') {
-    return this.c._request('DELETE', `/statuses/${id}`, { params: service ? { service } : undefined });
+    return this.c._request('DELETE', `/statuses/${encodeURIComponent(id)}`, { params: service ? { service } : undefined });
   }
 }
 
@@ -652,5 +652,204 @@ class MediaAPI {
     });
     if (!resp.ok) throw new SurfAPIError(resp.statusText, resp.status);
     return resp.json();
+  }
+}
+
+// ==========================================================================
+// RTB Client
+// ==========================================================================
+
+export interface SurfRTBClientOptions {
+  /** API key with rtb:* scopes (same surf_sk_live_... key as SurfClient) */
+  apiKey: string;
+  /** Base URL (default: https://surf.social) */
+  baseUrl?: string;
+  /** Request timeout in ms (default: 30_000) */
+  timeout?: number;
+  /**
+   * Max automatic retries on 429 / 5xx / network errors (default: 3).
+   * Matches SurfClient: capped exponential backoff, respects Retry-After.
+   */
+  maxRetries?: number;
+  /** Custom fetch implementation */
+  fetch?: typeof globalThis.fetch;
+}
+
+export interface RTBBidRequest {
+  id: string;
+  imp: Array<{
+    id: string;
+    banner?: { w: number; h: number; pos?: number; btype?: number[]; battr?: number[] };
+    video?: { mimes: string[]; minduration?: number; maxduration?: number; w?: number; h?: number };
+    native?: { request: string; ver?: string };
+    audio?: Record<string, unknown>;
+    bidfloor?: number;
+    bidfloorcur?: string;
+    ext?: { surf?: { feed_id?: string; feed_ids?: string[] } };
+  }>;
+  site?: { id?: string; domain?: string; page?: string; cat?: string[]; keywords?: string };
+  device?: Record<string, unknown>;
+  user?: { id?: string };
+  test?: number;
+  at?: number;
+  tmax?: number;
+  cur?: string[];
+}
+
+/**
+ * Surf RTB (Real-Time Bidding) Client.
+ *
+ * Uses the same `surf_sk_live_...` API key as {@link SurfClient} via `X-API-Key`
+ * header, but targets the RTB endpoints at `/devportal/v1/rtb/*`.
+ * The API key must include the `rtb:bid` and/or `rtb:reports` scopes.
+ *
+ * @example
+ * ```ts
+ * const rtb = new SurfRTBClient({ apiKey: 'surf_sk_live_...' });
+ *
+ * // Sandbox mode -- synthetic bids, no real spend
+ * const response = await rtb.bid({
+ *   id: 'req-1',
+ *   imp: [{ id: '1', banner: { w: 300, h: 250 } }],
+ * }, true);
+ *
+ * // Impression/click/win/billing fire from the tracker URLs in the bid
+ * // response (bid.nurl / bid.burl and the adm trackers) — no separate call.
+ * ```
+ */
+export class SurfRTBClient {
+  private baseUrl: string;
+  private apiKey: string;
+  private timeout: number;
+  private maxRetries: number;
+  private _fetch: typeof globalThis.fetch;
+
+  constructor(options: SurfRTBClientOptions) {
+    this.baseUrl = (options.baseUrl ?? 'https://surf.social').replace(/\/+$/, '');
+    this.apiKey = options.apiKey;
+    this.timeout = options.timeout ?? 30_000;
+    const r = options.maxRetries ?? 3;
+    this.maxRetries = Number.isFinite(r) ? Math.max(0, Math.floor(r)) : 3;
+    this._fetch = options.fetch ?? globalThis.fetch;
+  }
+
+  private url(path: string): string {
+    return `${this.baseUrl}/devportal/v1/rtb${path}`;
+  }
+
+  private async request(method: string, path: string, body?: unknown, params?: Record<string, string>): Promise<any> {
+    const url = new URL(this.url(path));
+    if (params) Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+    const headers: Record<string, string> = {
+      'X-API-Key': this.apiKey,
+      'User-Agent': 'surf-api-ts/1.0.0',
+      'Accept': 'application/json',
+    };
+    // Only advertise a JSON body Content-Type when there actually is one
+    // (GETs have none) — matches SurfClient.
+    if (body !== undefined && body !== null) headers['Content-Type'] = 'application/json';
+    const reqBody = body !== undefined && body !== null ? JSON.stringify(body) : undefined;
+
+    const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
+    let lastErr: unknown;
+
+    // Retry on 429 (respecting Retry-After) and 5xx with capped exponential
+    // backoff — mirrors SurfClient._request exactly.
+    for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
+      let fetchSucceeded = false;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), this.timeout);
+      try {
+        const resp = await this._fetch(url.toString(), {
+          method,
+          headers,
+          body: reqBody,
+          signal: controller.signal,
+        });
+
+        if (resp.status === 429 && attempt < this.maxRetries) {
+          clearTimeout(timer);
+          const raw = parseInt(resp.headers.get('Retry-After') ?? '');
+          const retryAfter = Math.min(Number.isFinite(raw) && raw > 0 ? raw : Math.pow(2, attempt), 60);
+          try { await resp.body?.cancel(); } catch {}
+          await sleep(retryAfter * 1_000);
+          continue;
+        }
+
+        if (resp.status >= 500 && attempt < this.maxRetries) {
+          clearTimeout(timer);
+          try { await resp.body?.cancel(); } catch {}
+          await sleep(Math.min(Math.pow(2, attempt), 60) * 1_000);
+          continue;
+        }
+
+        if (resp.status === 401) throw new SurfAuthError('RTB auth failed (401). Check your API key.');
+        if (resp.status === 403) throw new SurfScopeError('RTB forbidden (403). API key may lack required rtb:* scope.');
+        if (resp.status === 429) {
+          const raw = parseInt(resp.headers.get('Retry-After') ?? '');
+          throw new SurfRateLimitError('Rate limited (429)', Number.isFinite(raw) && raw > 0 ? raw : 5);
+        }
+        if (!resp.ok) {
+          const text = await resp.text().catch(() => '');
+          throw new SurfAPIError(text || `HTTP ${resp.status}`, resp.status);
+        }
+        // Tag successful-fetch scope: errors below (e.g. JSON parse) must not be retried.
+        fetchSucceeded = true;
+        // A 204 or empty body (e.g. sandbox no-bid) has no JSON to parse —
+        // return {} instead of throwing. Mirrors SurfClient._request.
+        if (resp.status === 204) return {};
+        const text = await resp.text();
+        if (!text) return {};
+        return JSON.parse(text);
+      } catch (e) {
+        if (e instanceof SurfAPIError) throw e;
+        if (fetchSucceeded) throw e;
+        lastErr = e;
+        if (attempt < this.maxRetries) {
+          clearTimeout(timer);
+          await sleep(Math.min(Math.pow(2, attempt), 60) * 1_000);
+        }
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+    throw lastErr ?? new SurfAPIError('Request failed', 0, 'connection_error');
+  }
+
+  /** Send an OpenRTB 2.5 bid request. */
+  async bid(request: RTBBidRequest, sandbox = false): Promise<any> {
+    const body = sandbox ? { ...request, test: 1 } : request;
+    return this.request('POST', '/bid', body);
+  }
+
+  /** Get RTB performance reports. */
+  async reports(days = 30, granularity: 'hour' | 'day' = 'day', appId?: number): Promise<any> {
+    const params: Record<string, string> = { days: String(days), granularity };
+    if (appId != null) params.app_id = String(appId);
+    return this.request('GET', '/reports', undefined, params);
+  }
+
+  /** Get RTB configuration and tier info. */
+  async config(appId?: number): Promise<any> {
+    const params: Record<string, string> = {};
+    if (appId != null) params.app_id = String(appId);
+    return this.request('GET', '/config', undefined, params);
+  }
+
+  /** List available RTB scopes. */
+  async scopes(): Promise<any[]> {
+    const data = await this.request('GET', '/scopes');
+    return data.scopes ?? [];
+  }
+
+  /**
+   * Get your personalized ads.txt entry for authorizing Surf as a seller.
+   * Add the returned `entries` to the ads.txt at the root of each domain
+   * where you display Surf ads.
+   */
+  async adsTxt(appId?: number): Promise<any> {
+    const params: Record<string, string> = {};
+    if (appId != null) params.app_id = String(appId);
+    return this.request('GET', '/ads-txt', undefined, params);
   }
 }

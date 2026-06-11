@@ -7,6 +7,17 @@ All notable changes to the Surf API SDKs will be documented here. All SDKs share
 ## Unreleased
 
 ### Added
+- **SurfRTBClient** (Python, TypeScript, Go, Java) -- RTB (Real-Time Bidding) client for programmatic ad buying. Uses the same `surf_sk_live_...` API key as `SurfClient` but targets the RTB endpoints. API key must include `rtb:bid` and/or `rtb:reports` scopes.
+  - `bid()` -- send OpenRTB 2.5 bid requests with optional `sandbox=True` for testing without real spend
+  - `reports()` -- access RTB performance reports with configurable granularity
+  - `config()` -- get publisher RTB configuration and tier info
+  - `scopes()` -- list available RTB scopes
+  - `ads_txt()` / `adsTxt()` / `AdsTxt()` -- fetch your personalized ads.txt entry authorizing Surf as a seller
+  - **Tracking is response-driven:** impression, click, win (`nurl`), and billing (`burl`) URLs are pre-built into the bid response and fired verbatim — there is no `event()` method or separate reporting call.
+  - **Multi-impression bid requests** are supported: pass multiple `imp` entries in `bid()` and the response returns a bid per fillable impression (keyed by `bid.impid`); each impression can carry its own `ext.surf` feed targeting
+  - **Automatic retry** -- RTB calls now retry on 429 (respecting `Retry-After`) and 5xx with capped exponential backoff, matching `SurfClient`. Default 3 retries (up to 4 total attempts), base delay 1s doubling each retry, capped at 60s; set to 0 to disable. Configurable via `max_retries` (Python), `maxRetries` (TypeScript), `WithRTBMaxRetries(n)` (Go), and the `RtbClient(apiKey, baseUrl, maxRetries)` constructor (Java).
+  - **Async (Python):** `AsyncSurfRTBClient` mirrors the sync `SurfRTBClient` with `await`able methods and the same retry behavior; exported from `surf_api`.
+  - **Test coverage:** per-language RTB integration tests (sandbox `bid()` + `reports()`/`config()`/`scopes()`/`ads_txt()` + an auth/scope error case), gated on `SURF_API_TEST_TOKEN` and run by the shared `test-harness/run_all.sh`; plus expanded Python unit tests for RTB retry behavior.
 - **Public pagination helper** — All four SDKs now expose a consistent `paginate()` method for walking cursor-paginated endpoints that return JSON objects (`{"<key>": [...], "cursor": "..."}`). Both `cursor` and `next_cursor` response fields are supported. An optional `limit` parameter caps total items yielded regardless of page count.
   - Python (sync): `SurfClient.paginate(path, key, params, limit=None)` — generator; `_paginate` retained as a backward-compatible alias
   - Python (async): `AsyncSurfClient.paginate(path, key, params, limit=None)` — async generator
@@ -29,6 +40,10 @@ All notable changes to the Surf API SDKs will be documented here. All SDKs share
 - TypeScript: `maxRetries` option on `SurfClientOptions` to configure retry count (default: `3`; set to `0` to disable)
 - Go: `WithMaxRetries(n int) ClientOption` passed to `NewClient` to configure retry count (default: `3`; pass `WithMaxRetries(0)` to disable)
 - Java: 4-parameter constructor `SurfClient(apiKey, baseUrl, timeoutSeconds, maxRetries)` to configure retry count (default: `3`)
+
+### Fixed
+
+- **Post-action methods now work for Bluesky posts (AT-URI ids).** `favourite`, `unfavourite`, `reblog`/`boost`, `unreblog`/`unboost`, `bookmark`, `unbookmark`, and `deletePost` now percent-encode the post id in the URL path, so Bluesky AT-URIs (`at://did:plc:…/app.bsky.feed.post/…`) route correctly instead of 404ing on the unencoded `://` and `/`. Fixes Python, TypeScript, and Go (Java already encoded the path segment). Numeric Mastodon ids are unaffected (encoding is a no-op for them).
 
 ---
 

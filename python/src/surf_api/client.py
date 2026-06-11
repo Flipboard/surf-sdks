@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any, Iterator, List, Optional
+from urllib.parse import quote
 
 import requests
 
@@ -327,7 +328,7 @@ class _FeedsAPI:
         Args:
             service: Optional target service ('bluesky' or 'mastodon').
         """
-        path = f"/statuses/{post_id}/favourite"
+        path = f"/statuses/{quote(post_id, safe='')}/favourite"
         if service:
             path += f"?service={service}"
         return self._c._post(path)
@@ -338,7 +339,7 @@ class _FeedsAPI:
         Args:
             service: Optional target service ('bluesky' or 'mastodon').
         """
-        path = f"/statuses/{post_id}/unfavourite"
+        path = f"/statuses/{quote(post_id, safe='')}/unfavourite"
         if service:
             path += f"?service={service}"
         return self._c._post(path)
@@ -349,7 +350,7 @@ class _FeedsAPI:
         Args:
             service: Optional target service ('bluesky' or 'mastodon').
         """
-        path = f"/statuses/{post_id}/reblog"
+        path = f"/statuses/{quote(post_id, safe='')}/reblog"
         if service:
             path += f"?service={service}"
         return self._c._post(path)
@@ -360,7 +361,7 @@ class _FeedsAPI:
         Args:
             service: Optional target service ('bluesky' or 'mastodon').
         """
-        path = f"/statuses/{post_id}/unreblog"
+        path = f"/statuses/{quote(post_id, safe='')}/unreblog"
         if service:
             path += f"?service={service}"
         return self._c._post(path)
@@ -371,7 +372,7 @@ class _FeedsAPI:
         Args:
             service: Optional target service ('bluesky' or 'mastodon').
         """
-        path = f"/statuses/{post_id}/bookmark"
+        path = f"/statuses/{quote(post_id, safe='')}/bookmark"
         if service:
             path += f"?service={service}"
         return self._c._post(path)
@@ -382,7 +383,7 @@ class _FeedsAPI:
         Args:
             service: Optional target service ('bluesky' or 'mastodon').
         """
-        path = f"/statuses/{post_id}/unbookmark"
+        path = f"/statuses/{quote(post_id, safe='')}/unbookmark"
         if service:
             path += f"?service={service}"
         return self._c._post(path)
@@ -393,7 +394,7 @@ class _FeedsAPI:
         Args:
             service: Optional target service ('bluesky' or 'mastodon').
         """
-        path = f"/statuses/{post_id}"
+        path = f"/statuses/{quote(post_id, safe='')}"
         if service:
             path += f"?service={service}"
         return self._c._delete(path)
@@ -1035,6 +1036,177 @@ class _MediaAPI:
         self._c.rate_limit = RateLimitInfo(resp.headers)
         self._c._check_errors(resp)
         return resp.json()
+
+
+# ==========================================================================
+# RTB (Real-Time Bidding)
+# ==========================================================================
+
+class SurfRTBClient:
+    """Client for the Surf RTB (Real-Time Bidding) API.
+
+    Uses the same API key as SurfClient but targets the RTB endpoints
+    at /devportal/v1/rtb/*. The API key must include rtb:* scopes.
+
+    Usage::
+
+        rtb = SurfRTBClient(api_key="surf_sk_live_...")
+
+        # Sandbox mode -- test without real spend
+        response = rtb.bid({
+            "id": "req-1",
+            "imp": [{"id": "1", "banner": {"w": 300, "h": 250}}],
+        }, sandbox=True)
+
+        # Production bid
+        response = rtb.bid({
+            "id": "req-1",
+            "imp": [{
+                "id": "1",
+                "banner": {"w": 300, "h": 250},
+                "bidfloor": 0.50,
+                "ext": {"surf": {"feed_id": "surf/topic/technology"}},
+            }],
+            "site": {"domain": "publisher.example.com"},
+        })
+
+        # Impression/click/win/billing are fired from the tracker URLs in the
+        # bid response (resp["seatbid"][...]["bid"][...]["nurl"]/["burl"] and the
+        # adm trackers) — there's no separate event call.
+
+        # Get reports
+        reports = rtb.reports(days=7)
+
+        # Get config
+        config = rtb.config()
+    """
+
+    def __init__(
+        self,
+        api_key: str,
+        base_url: str = "https://surf.social",
+        timeout: int = 30,
+        max_retries: int = 3,
+    ):
+        self.base_url = base_url.rstrip("/")
+        self.timeout = timeout
+        self.max_retries = max_retries
+        self._session = requests.Session()
+        self._session.headers["X-API-Key"] = api_key
+        # Content-Type is set per-request by `json=` only when a body is present,
+        # so GETs don't send it (mirrors SurfClient).
+        self._session.headers["Accept"] = "application/json"
+        self._session.headers["User-Agent"] = "surf-api-python/1.0.0"
+
+    def _url(self, path: str) -> str:
+        return f"{self.base_url}/devportal/v1/rtb{path}"
+
+    def _request(self, method: str, path: str, **kwargs) -> dict:
+        """Make an RTB request with retry on 429 (Retry-After) and 5xx,
+        using capped exponential backoff — mirrors SurfClient._request."""
+        kwargs.setdefault("timeout", self.timeout)
+        import time as _time
+        last_exc = None
+        for attempt in range(self.max_retries + 1):
+            try:
+                resp = self._session.request(method, self._url(path), **kwargs)
+                if resp.status_code == 429 and attempt < self.max_retries:
+                    retry_after = int(resp.headers.get("Retry-After", 2 ** attempt))
+                    _time.sleep(min(retry_after, 60))
+                    continue
+                if resp.status_code >= 500 and attempt < self.max_retries:
+                    _time.sleep(min(2 ** attempt, 60))
+                    continue
+                return self._check(resp)
+            except (requests.ConnectionError, requests.Timeout) as e:
+                last_exc = e
+                if attempt < self.max_retries:
+                    _time.sleep(min(2 ** attempt, 60))
+                    continue
+                raise SurfAPIError(f"Connection failed after {self.max_retries + 1} attempts: {e}",
+                                   status_code=0, error_code="connection_error")
+        if last_exc:
+            raise last_exc
+        return {}
+
+    def _check(self, resp: requests.Response) -> dict:
+        if resp.status_code == 401:
+            raise SurfAuthError("RTB authentication failed (401). Check your API key and rtb:* scopes.", status_code=401)
+        if resp.status_code == 403:
+            raise SurfScopeError("RTB forbidden (403). Your API key may lack the required rtb:* scope.", status_code=403)
+        if resp.status_code == 429:
+            retry_after = resp.headers.get("Retry-After", "5")
+            raise SurfRateLimitError(f"Rate limited (429). Retry after {retry_after}s.", retry_after=retry_after, status_code=429)
+        if resp.status_code >= 400:
+            try:
+                body = resp.json()
+                msg = body.get("error_description") or body.get("error") or resp.text[:200]
+            except Exception:
+                msg = resp.text[:200]
+            raise SurfAPIError(msg, status_code=resp.status_code)
+        # 204 No Content (e.g. no-bid) or empty body -> no JSON to parse.
+        if resp.status_code == 204 or not resp.content:
+            return {}
+        return resp.json()
+
+    def bid(self, request: dict, sandbox: bool = False) -> dict:
+        """Send an OpenRTB 2.5 bid request.
+
+        Args:
+            request: OpenRTB bid request dict. Must include 'id' and 'imp'.
+            sandbox: If True, sets test=1 to get synthetic bids without real spend.
+
+        Returns:
+            OpenRTB bid response dict with seatbid array.
+        """
+        if sandbox:
+            request = {**request, "test": 1}
+        return self._request("POST", "/bid", json=request)
+
+    def reports(self, days: int = 30, granularity: str = "day", app_id: int = None) -> dict:
+        """Get RTB performance reports.
+
+        Args:
+            days: Number of days (1-90, default 30).
+            app_id: Application ID (optional, defaults to first app).
+            granularity: 'hour' or 'day'.
+
+        Returns:
+            Dict with 'summary' and 'timeseries' keys.
+        """
+        params = {"days": days, "granularity": granularity}
+        if app_id is not None:
+            params["app_id"] = app_id
+        return self._request("GET", "/reports", params=params)
+
+    def config(self, app_id: int = None) -> dict:
+        """Get RTB configuration and tier info.
+
+        Returns:
+            Dict with 'config' and 'tiers' keys.
+        """
+        params = {}
+        if app_id is not None:
+            params["app_id"] = app_id
+        return self._request("GET", "/config", params=params)
+
+    def scopes(self) -> list:
+        """List available RTB scopes."""
+        return self._request("GET", "/scopes").get("scopes", [])
+
+    def ads_txt(self, app_id: str = None) -> dict:
+        """Get your personalized ads.txt entry for authorizing Surf as a seller.
+
+        Add the returned `entries` to the ads.txt file at the root of each
+        domain where you display Surf ads.
+
+        Returns:
+            Dict with 'seller_id', 'entries', 'sellers_json_url', 'instructions'.
+        """
+        params = {}
+        if app_id is not None:
+            params["app_id"] = app_id
+        return self._request("GET", "/ads-txt", params=params)
 
 
 def _clean(params: Optional[dict]) -> Optional[dict]:
