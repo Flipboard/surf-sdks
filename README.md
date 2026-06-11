@@ -94,6 +94,25 @@ Feed feed = client.feeds.get("surf/topic/technology");
 
 All SDKs include OAuth helpers for PKCE flow.
 
+## RTB (Real-Time Bidding)
+
+All SDKs include an RTB client for programmatic ad buying via OpenRTB 2.5. Uses the same `surf_sk_live_...` API key — include the `rtb:bid` and `rtb:reports` scopes when creating your key. Impression/click/win/billing tracking is fired from the URLs in the bid response (there's no separate event call).
+
+```python
+from surf_api import SurfRTBClient
+
+rtb = SurfRTBClient(api_key="surf_sk_live_...")
+
+# Test with sandbox mode (no real spend)
+response = rtb.bid({
+    "id": "req-1",
+    "imp": [{"id": "1", "banner": {"w": 300, "h": 250}}],
+}, sandbox=True)
+
+# Report events
+rtb.event(bid_id="bid-1", event="impression")
+```
+
 ## MCP Integration
 
 The Surf API is available as an [MCP server](https://modelcontextprotocol.io) for Claude Code and other AI agents:

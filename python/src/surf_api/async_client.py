@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 from typing import Any, AsyncIterator, Optional
+from urllib.parse import quote
 
 try:
     import httpx
@@ -288,43 +289,43 @@ class _AsyncFeedsAPI:
         return await self._c._post(path, json=body)
 
     async def favourite(self, post_id: str, service: str = None) -> dict:
-        path = f"/statuses/{post_id}/favourite"
+        path = f"/statuses/{quote(post_id, safe='')}/favourite"
         if service:
             path += f"?service={service}"
         return await self._c._post(path)
 
     async def unfavourite(self, post_id: str, service: str = None) -> dict:
-        path = f"/statuses/{post_id}/unfavourite"
+        path = f"/statuses/{quote(post_id, safe='')}/unfavourite"
         if service:
             path += f"?service={service}"
         return await self._c._post(path)
 
     async def boost(self, post_id: str, service: str = None) -> dict:
-        path = f"/statuses/{post_id}/reblog"
+        path = f"/statuses/{quote(post_id, safe='')}/reblog"
         if service:
             path += f"?service={service}"
         return await self._c._post(path)
 
     async def unboost(self, post_id: str, service: str = None) -> dict:
-        path = f"/statuses/{post_id}/unreblog"
+        path = f"/statuses/{quote(post_id, safe='')}/unreblog"
         if service:
             path += f"?service={service}"
         return await self._c._post(path)
 
     async def bookmark(self, post_id: str, service: str = None) -> dict:
-        path = f"/statuses/{post_id}/bookmark"
+        path = f"/statuses/{quote(post_id, safe='')}/bookmark"
         if service:
             path += f"?service={service}"
         return await self._c._post(path)
 
     async def unbookmark(self, post_id: str, service: str = None) -> dict:
-        path = f"/statuses/{post_id}/unbookmark"
+        path = f"/statuses/{quote(post_id, safe='')}/unbookmark"
         if service:
             path += f"?service={service}"
         return await self._c._post(path)
 
     async def delete_post(self, post_id: str, service: str = None) -> dict:
-        path = f"/statuses/{post_id}"
+        path = f"/statuses/{quote(post_id, safe='')}"
         if service:
             path += f"?service={service}"
         return await self._c._delete(path)
@@ -631,6 +632,171 @@ class _AsyncMediaAPI:
         self._c.rate_limit = RateLimitInfo(resp.headers)
         self._c._check_errors(resp)
         return resp.json()
+
+
+# ==========================================================================
+# RTB (Real-Time Bidding) — async
+# ==========================================================================
+
+class AsyncSurfRTBClient:
+    """Async client for the Surf RTB (Real-Time Bidding) API (uses httpx).
+
+    Mirrors the sync :class:`SurfRTBClient` surface. Targets the RTB endpoints
+    at /devportal/v1/rtb/* on ``surf.social`` (distinct from the main API host).
+    The API key must include rtb:* scopes.
+
+    Use as an async context manager for proper connection cleanup::
+
+        async with AsyncSurfRTBClient("surf_sk_live_...") as rtb:
+            # Sandbox mode -- test without real spend / no publisher config needed
+            response = await rtb.bid({
+                "id": "req-1",
+                "imp": [{"id": "1", "banner": {"w": 300, "h": 250}}],
+            }, sandbox=True)
+
+            reports = await rtb.reports(days=7)
+            config = await rtb.config()
+    """
+
+    def __init__(
+        self,
+        api_key: str,
+        base_url: str = "https://surf.social",
+        timeout: float = 30.0,
+        max_retries: int = 3,
+    ):
+        self.base_url = base_url.rstrip("/")
+        self.timeout = timeout
+        self.max_retries = max_retries
+        self._client = httpx.AsyncClient(
+            base_url=f"{self.base_url}/devportal/v1/rtb",
+            headers={
+                "X-API-Key": api_key,
+                # Content-Type is set per-request by `json=` only when a body is
+                # present, so GETs don't send it (mirrors AsyncSurfClient).
+                "Accept": "application/json",
+                "User-Agent": "surf-api-python-async/1.0.0",
+            },
+            timeout=timeout,
+        )
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        await self.close()
+
+    async def close(self):
+        """Close the underlying httpx client."""
+        await self._client.aclose()
+
+    async def _request(self, method: str, path: str, **kwargs) -> dict:
+        """Make an RTB request with retry on 429 (Retry-After) and 5xx,
+        using capped exponential backoff — mirrors AsyncSurfClient._request."""
+        last_exc = None
+        for attempt in range(self.max_retries + 1):
+            try:
+                resp = await self._client.request(method, path, **kwargs)
+                if resp.status_code == 429 and attempt < self.max_retries:
+                    retry_after = int(resp.headers.get("retry-after", 2 ** attempt))
+                    await asyncio.sleep(min(retry_after, 60))
+                    continue
+                if resp.status_code >= 500 and attempt < self.max_retries:
+                    await asyncio.sleep(min(2 ** attempt, 60))
+                    continue
+                return self._check(resp)
+            except (httpx.ConnectError, httpx.TimeoutException) as e:
+                last_exc = e
+                if attempt < self.max_retries:
+                    await asyncio.sleep(min(2 ** attempt, 60))
+                    continue
+                raise SurfAPIError(
+                    f"Connection failed after {self.max_retries + 1} attempts: {e}",
+                    status_code=0,
+                    error_code="connection_error",
+                )
+        if last_exc:
+            raise last_exc
+        return {}
+
+    def _check(self, resp: httpx.Response) -> dict:
+        if resp.status_code == 401:
+            raise SurfAuthError("RTB authentication failed (401). Check your API key and rtb:* scopes.", status_code=401)
+        if resp.status_code == 403:
+            raise SurfScopeError("RTB forbidden (403). Your API key may lack the required rtb:* scope.", status_code=403)
+        if resp.status_code == 429:
+            retry_after = resp.headers.get("retry-after", "5")
+            raise SurfRateLimitError(f"Rate limited (429). Retry after {retry_after}s.", retry_after=retry_after, status_code=429)
+        if resp.status_code >= 400:
+            try:
+                body = resp.json()
+                msg = body.get("error_description") or body.get("error") or resp.text[:200]
+            except Exception:
+                msg = resp.text[:200]
+            raise SurfAPIError(msg, status_code=resp.status_code)
+        # 204 No Content (e.g. no-bid) or empty body -> no JSON to parse.
+        if resp.status_code == 204 or not resp.content:
+            return {}
+        return resp.json()
+
+    async def bid(self, request: dict, sandbox: bool = False) -> dict:
+        """Send an OpenRTB 2.5 bid request.
+
+        Args:
+            request: OpenRTB bid request dict. Must include 'id' and 'imp'.
+            sandbox: If True, sets test=1 to get synthetic bids without real spend.
+
+        Returns:
+            OpenRTB bid response dict with seatbid array.
+        """
+        if sandbox:
+            request = {**request, "test": 1}
+        return await self._request("POST", "/bid", json=request)
+
+    async def reports(self, days: int = 30, granularity: str = "day", app_id: int = None) -> dict:
+        """Get RTB performance reports.
+
+        Args:
+            days: Number of days (1-90, default 30).
+            app_id: Application ID (optional, defaults to first app).
+            granularity: 'hour' or 'day'.
+
+        Returns:
+            Dict with 'summary' and 'timeseries' keys.
+        """
+        params = {"days": days, "granularity": granularity}
+        if app_id is not None:
+            params["app_id"] = app_id
+        return await self._request("GET", "/reports", params=params)
+
+    async def config(self, app_id: int = None) -> dict:
+        """Get RTB configuration and tier info.
+
+        Returns:
+            Dict with 'config' and 'tiers' keys.
+        """
+        params = {}
+        if app_id is not None:
+            params["app_id"] = app_id
+        return await self._request("GET", "/config", params=params)
+
+    async def scopes(self) -> list:
+        """List available RTB scopes."""
+        return (await self._request("GET", "/scopes")).get("scopes", [])
+
+    async def ads_txt(self, app_id: str = None) -> dict:
+        """Get your personalized ads.txt entry for authorizing Surf as a seller.
+
+        Add the returned `entries` to the ads.txt file at the root of each
+        domain where you display Surf ads.
+
+        Returns:
+            Dict with 'seller_id', 'entries', 'sellers_json_url', 'instructions'.
+        """
+        params = {}
+        if app_id is not None:
+            params["app_id"] = app_id
+        return await self._request("GET", "/ads-txt", params=params)
 
 
 def _clean(params: Optional[dict]) -> Optional[dict]:

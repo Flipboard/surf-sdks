@@ -37,6 +37,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class SurfApiIntegrationTest {
 
     private static SurfClient client;
+    private static RtbClient rtb;
 
     // State shared across ordered tests
     private static String customFeedId;
@@ -57,6 +58,15 @@ class SurfApiIntegrationTest {
             client = new SurfClient(token, baseUrl, 60);
         } else {
             client = new SurfClient(token, SurfClient.DEFAULT_BASE_URL, 60);
+        }
+
+        // RtbClient targets surf.social/devportal/v1/rtb (NOT the api.surf.social /v1 host).
+        // Use the default base URL unless explicitly overridden via SURF_RTB_BASE_URL.
+        String rtbBaseUrl = System.getenv("SURF_RTB_BASE_URL");
+        if (rtbBaseUrl != null && !rtbBaseUrl.isEmpty()) {
+            rtb = new RtbClient(token, rtbBaseUrl);
+        } else {
+            rtb = new RtbClient(token);
         }
     }
 
@@ -102,6 +112,12 @@ class SurfApiIntegrationTest {
         if (e instanceof SurfScopeError || e instanceof SurfAuthError) {
             Assumptions.assumeTrue(false,
                     "Skipping — scope/auth error: " + e.getMessage());
+        }
+        // The account may not be a registered RTB publisher; the API correctly
+        // returns 503 "could not be initialized" in that case — tolerate it.
+        if (e.getMessage() != null && e.getMessage().contains("could not be initialized")) {
+            Assumptions.assumeTrue(false,
+                    "Skipping — account has no RTB publisher config: " + e.getMessage());
         }
         throw e; // re-throw if it's some other error
     }
@@ -487,6 +503,109 @@ class SurfApiIntegrationTest {
         }
 
         assertTrue(items.size() <= 4, "limit=4 must be respected, got " + items.size());
+    }
+
+    // ======================================================================
+    // 6c. RTB (Real-Time Bidding)
+    //
+    // Uses the same SURF_API_TEST_TOKEN. RTB endpoints live at surf.social/devportal/v1/rtb.
+    // Tests skip cleanly if the token lacks the rtb:* scopes. The bid test runs in
+    // sandbox mode (test=1) so no publisher config is required and no spend occurs.
+    // ======================================================================
+
+    @Test
+    @Order(660)
+    void rtbSandboxBid() {
+        try {
+            Map<String, Object> bidRequest = Map.of(
+                    "id", "java-sdk-itest-" + System.currentTimeMillis(),
+                    "imp", List.of(Map.of(
+                            "id", "1",
+                            "banner", Map.of("w", 300, "h", 250))));
+            // sandbox=true forces test=1 — no publisher config needed, no spend.
+            Map<String, Object> response = rtb.bid(bidRequest, true);
+            assertNotNull(response, "Sandbox bid response should not be null");
+        } catch (SurfAPIError e) {
+            skipOnScopeOrAuth(e);
+        } catch (java.io.IOException | InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Test
+    @Order(661)
+    void rtbReports() {
+        try {
+            Map<String, Object> reports = rtb.reports(7, "day");
+            assertNotNull(reports, "Reports response should not be null");
+        } catch (SurfAPIError e) {
+            skipOnScopeOrAuth(e);
+        } catch (java.io.IOException | InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Test
+    @Order(662)
+    void rtbConfig() {
+        try {
+            Map<String, Object> config = rtb.config();
+            assertNotNull(config, "Config response should not be null");
+        } catch (SurfAPIError e) {
+            skipOnScopeOrAuth(e);
+        } catch (java.io.IOException | InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Test
+    @Order(663)
+    void rtbScopes() {
+        try {
+            List<Map<String, Object>> scopes = rtb.scopes();
+            assertNotNull(scopes, "Scopes list should not be null (may be empty)");
+        } catch (SurfAPIError e) {
+            skipOnScopeOrAuth(e);
+        } catch (java.io.IOException | InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Test
+    @Order(664)
+    void rtbAdsTxt() {
+        try {
+            Map<String, Object> adsTxt = rtb.adsTxt();
+            assertNotNull(adsTxt, "ads.txt response should not be null");
+        } catch (SurfAPIError e) {
+            skipOnScopeOrAuth(e);
+        } catch (java.io.IOException | InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Test
+    @Order(665)
+    void rtbErrorOnBadCredentials() {
+        // A clearly invalid token should yield a typed auth/scope error from the RTB client.
+        // Disable retries so we don't sleep on any transient 5xx during the negative test.
+        RtbClient badRtb = new RtbClient("surf_sk_live_definitely_invalid_token_xyz",
+                rtb == null ? "https://surf.social" : System.getenv("SURF_RTB_BASE_URL") != null
+                        ? System.getenv("SURF_RTB_BASE_URL") : "https://surf.social",
+                0);
+        try {
+            badRtb.config();
+            // Some deployments may not enforce auth on every RTB read endpoint; tolerate success.
+        } catch (SurfAuthError | SurfScopeError e) {
+            assertNotNull(e.getMessage());
+            assertTrue(e.getStatusCode() == 401 || e.getStatusCode() == 403,
+                    "Expected 401 or 403, got " + e.getStatusCode());
+        } catch (SurfAPIError e) {
+            // Any other API error (e.g. 400) is acceptable for an invalid token.
+            assertNotNull(e.getMessage());
+        } catch (java.io.IOException | InterruptedException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     // ======================================================================

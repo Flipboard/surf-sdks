@@ -95,7 +95,12 @@ func NewClient(apiKey string, opts ...ClientOption) *Client {
 	return c
 }
 
-// APIError is returned for non-2xx responses.
+// APIError is returned for non-2xx responses by both Client and RTBClient.
+// StatusCode always carries the HTTP status (e.g. 401 unauthorized, 403
+// missing scope, 429 rate limited), so callers can branch on it via errors.As:
+//
+//	var apiErr *surf.APIError
+//	if errors.As(err, &apiErr) && apiErr.StatusCode == 403 { ... }
 type APIError struct {
 	StatusCode int
 	ErrorCode  string `json:"error"`
@@ -470,7 +475,7 @@ func (a *FeedsAPI) Favourite(id string, service ...string) (json.RawMessage, err
 	if err != nil {
 		return nil, err
 	}
-	data, err := a.c.do("POST", "/statuses/"+id+"/favourite", params, nil)
+	data, err := a.c.do("POST", "/statuses/"+url.PathEscape(id)+"/favourite", params, nil)
 	return json.RawMessage(data), err
 }
 
@@ -479,7 +484,7 @@ func (a *FeedsAPI) Unfavourite(id string, service ...string) (json.RawMessage, e
 	if err != nil {
 		return nil, err
 	}
-	data, err := a.c.do("POST", "/statuses/"+id+"/unfavourite", params, nil)
+	data, err := a.c.do("POST", "/statuses/"+url.PathEscape(id)+"/unfavourite", params, nil)
 	return json.RawMessage(data), err
 }
 
@@ -488,7 +493,7 @@ func (a *FeedsAPI) Boost(id string, service ...string) (json.RawMessage, error) 
 	if err != nil {
 		return nil, err
 	}
-	data, err := a.c.do("POST", "/statuses/"+id+"/reblog", params, nil)
+	data, err := a.c.do("POST", "/statuses/"+url.PathEscape(id)+"/reblog", params, nil)
 	return json.RawMessage(data), err
 }
 
@@ -497,7 +502,7 @@ func (a *FeedsAPI) Unboost(id string, service ...string) (json.RawMessage, error
 	if err != nil {
 		return nil, err
 	}
-	data, err := a.c.do("POST", "/statuses/"+id+"/unreblog", params, nil)
+	data, err := a.c.do("POST", "/statuses/"+url.PathEscape(id)+"/unreblog", params, nil)
 	return json.RawMessage(data), err
 }
 
@@ -506,7 +511,7 @@ func (a *FeedsAPI) Bookmark(id string, service ...string) (json.RawMessage, erro
 	if err != nil {
 		return nil, err
 	}
-	data, err := a.c.do("POST", "/statuses/"+id+"/bookmark", params, nil)
+	data, err := a.c.do("POST", "/statuses/"+url.PathEscape(id)+"/bookmark", params, nil)
 	return json.RawMessage(data), err
 }
 
@@ -515,7 +520,7 @@ func (a *FeedsAPI) Unbookmark(id string, service ...string) (json.RawMessage, er
 	if err != nil {
 		return nil, err
 	}
-	data, err := a.c.do("POST", "/statuses/"+id+"/unbookmark", params, nil)
+	data, err := a.c.do("POST", "/statuses/"+url.PathEscape(id)+"/unbookmark", params, nil)
 	return json.RawMessage(data), err
 }
 
@@ -524,7 +529,7 @@ func (a *FeedsAPI) DeletePost(id string, service ...string) error {
 	if err != nil {
 		return err
 	}
-	_, err = a.c.do("DELETE", "/statuses/"+id, params, nil)
+	_, err = a.c.do("DELETE", "/statuses/"+url.PathEscape(id), params, nil)
 	return err
 }
 
@@ -959,4 +964,166 @@ type MediaAPI struct{ c *Client }
 // Upload is not yet implemented — requires multipart form encoding.
 func (a *MediaAPI) Upload(filename string, data io.Reader) (json.RawMessage, error) {
 	return nil, fmt.Errorf("surf: media upload not yet implemented in Go SDK")
+}
+
+// =========================================================================
+// RTB (Real-Time Bidding)
+// =========================================================================
+
+// RTBClient is a separate client for the Surf RTB API.
+// Uses the same API key as Client but targets RTB endpoints.
+// The API key must include rtb:* scopes.
+type RTBClient struct {
+	APIKey     string
+	BaseURL    string
+	HTTP       *http.Client
+	maxRetries int // mirrors Client: retry 429/5xx/transient errors
+}
+
+// RTBClientOption configures an RTBClient.
+type RTBClientOption func(*RTBClient)
+
+// WithRTBMaxRetries sets the number of retries after the initial attempt on 429,
+// 5xx, or transient network errors (default 3; 0 disables retry). Mirrors
+// WithMaxRetries on the main Client.
+func WithRTBMaxRetries(n int) RTBClientOption {
+	return func(r *RTBClient) {
+		if n >= 0 {
+			r.maxRetries = n
+		}
+	}
+}
+
+// NewRTBClient creates an RTB client. Uses the same API key format as NewClient.
+// Pass RTBClientOption values to override defaults.
+func NewRTBClient(apiKey string, opts ...RTBClientOption) *RTBClient {
+	r := &RTBClient{
+		APIKey:     apiKey,
+		BaseURL:    "https://surf.social",
+		HTTP:       &http.Client{Timeout: 10 * time.Second},
+		maxRetries: 3,
+	}
+	for _, opt := range opts {
+		opt(r)
+	}
+	return r
+}
+
+func (r *RTBClient) url(path string) string {
+	return r.BaseURL + "/devportal/v1/rtb" + path
+}
+
+func (r *RTBClient) do(method, path string, body interface{}, params url.Values) (json.RawMessage, error) {
+	u := r.url(path)
+	if len(params) > 0 {
+		u += "?" + params.Encode()
+	}
+
+	var bodyBytes []byte
+	if body != nil {
+		var err error
+		bodyBytes, err = json.Marshal(body)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Retry on 429 (respecting Retry-After), 5xx, and transient network errors,
+	// matching Client.do so RTB and the main client behave the same way.
+	for attempt := 0; attempt <= r.maxRetries; attempt++ {
+		var reqBody io.Reader
+		if bodyBytes != nil {
+			reqBody = bytes.NewReader(bodyBytes)
+		}
+		req, err := http.NewRequest(method, u, reqBody)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("X-API-Key", r.APIKey)
+		req.Header.Set("User-Agent", userAgent)
+		req.Header.Set("Accept", "application/json")
+		if bodyBytes != nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
+
+		resp, err := r.HTTP.Do(req)
+		if err != nil {
+			if attempt < r.maxRetries {
+				time.Sleep(cappedBackoff(attempt))
+				continue
+			}
+			return nil, err
+		}
+
+		data, readErr := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if readErr != nil {
+			return nil, readErr
+		}
+
+		if resp.StatusCode == 429 && attempt < r.maxRetries {
+			retryAfter := atoi(resp.Header.Get("Retry-After"))
+			if retryAfter <= 0 {
+				retryAfter = int(cappedBackoff(attempt).Seconds())
+			}
+			if retryAfter > 60 {
+				retryAfter = 60
+			}
+			time.Sleep(time.Duration(retryAfter) * time.Second)
+			continue
+		}
+
+		if resp.StatusCode >= 500 && attempt < r.maxRetries {
+			time.Sleep(cappedBackoff(attempt))
+			continue
+		}
+
+		if resp.StatusCode >= 400 {
+			apiErr := &APIError{StatusCode: resp.StatusCode}
+			_ = json.Unmarshal(data, apiErr)
+			if apiErr.Message == "" {
+				apiErr.Message = string(data)
+			}
+			return nil, apiErr
+		}
+
+		return json.RawMessage(data), nil
+	}
+	return nil, fmt.Errorf("surf: RTB request failed after %d attempts", r.maxRetries+1)
+}
+
+// Bid sends an OpenRTB 2.5 bid request. Set sandbox=true for test mode.
+func (r *RTBClient) Bid(request map[string]interface{}, sandbox bool) (json.RawMessage, error) {
+	body := request
+	if sandbox {
+		body = make(map[string]interface{}, len(request)+1)
+		for k, v := range request {
+			body[k] = v
+		}
+		body["test"] = 1
+	}
+	return r.do("POST", "/bid", body, nil)
+}
+
+// Reports gets RTB performance reports.
+func (r *RTBClient) Reports(days int, granularity string) (json.RawMessage, error) {
+	params := url.Values{"days": {strconv.Itoa(days)}, "granularity": {granularity}}
+	return r.do("GET", "/reports", nil, params)
+}
+
+// Config gets RTB configuration and tier info.
+func (r *RTBClient) Config() (json.RawMessage, error) {
+	return r.do("GET", "/config", nil, nil)
+}
+
+// Scopes lists available RTB scopes.
+func (r *RTBClient) Scopes() (json.RawMessage, error) {
+	return r.do("GET", "/scopes", nil, nil)
+}
+
+// AdsTxt returns your personalized ads.txt entry for authorizing Surf as a
+// seller. Add the returned entries to the ads.txt at the root of each domain
+// where you display Surf ads.
+func (r *RTBClient) AdsTxt() (json.RawMessage, error) {
+	return r.do("GET", "/ads-txt", nil, nil)
 }
