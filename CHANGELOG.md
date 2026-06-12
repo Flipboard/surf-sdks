@@ -7,6 +7,7 @@ All notable changes to the Surf API SDKs will be documented here. All SDKs share
 ## Unreleased
 
 ### Added
+- **Nested posts on the `Post` model** — The typed `Post` model now exposes two optional self-referential nested posts: `reblog` (the reposted post, present on reposts) and `quote` (the quoted post, present on quote posts). Available in Python (`reblog` / `quote`), TypeScript (`reblog?` / `quote?`), and Go (`Reblog` / `Quote`); the Java SDK returns raw `Map<String, Object>` for posts and is unaffected.
 - **SurfRTBClient** (Python, TypeScript, Go, Java) -- RTB (Real-Time Bidding) client for programmatic ad buying. Uses the same `surf_sk_live_...` API key as `SurfClient` but targets the RTB endpoints. API key must include `rtb:bid` and/or `rtb:reports` scopes.
   - `bid()` -- send OpenRTB 2.5 bid requests with optional `sandbox=True` for testing without real spend
   - `reports()` -- access RTB performance reports with configurable granularity
