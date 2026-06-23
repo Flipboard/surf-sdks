@@ -653,6 +653,48 @@ class MediaAPI {
     if (!resp.ok) throw new SurfAPIError(resp.statusText, resp.status);
     return resp.json();
   }
+
+  /**
+   * Start AI generation of a feed cover image (Stable Diffusion XL). Requires the
+   * `use:ai` scope. Async submit/poll: returns immediately with `{ key, url, status:
+   * 'pending' }` — generation runs server-side (can take a couple minutes). Poll
+   * {@link getGenerateImageStatus} with `key` until `done`, then use `url`. Or call
+   * {@link generateImageAndWait} to do both. `skipRefiner` trades quality for speed.
+   */
+  generateImage(
+    prompt: string,
+    opts?: { skipRefiner?: boolean },
+  ): Promise<{ key: string; url: string; status: string }> {
+    return this.c._post('/media/generate-image', { prompt, skipRefiner: opts?.skipRefiner ?? false });
+  }
+
+  /** Poll a generation job: `{ status: 'pending' | 'done' | 'failed' | 'not_found' }`. */
+  getGenerateImageStatus(key: string): Promise<{ status: string }> {
+    return this.c._get('/media/generate-image/status', { key });
+  }
+
+  /**
+   * Submit a generation job and poll until it completes, returning the image URL.
+   * Polls every `pollIntervalMs` (default 4s) up to `timeoutMs` (default 10 min).
+   * Throws {@link SurfAPIError} if generation fails or times out.
+   */
+  async generateImageAndWait(
+    prompt: string,
+    opts?: { skipRefiner?: boolean; pollIntervalMs?: number; timeoutMs?: number },
+  ): Promise<{ url: string }> {
+    const submit = await this.generateImage(prompt, { skipRefiner: opts?.skipRefiner });
+    const intervalMs = opts?.pollIntervalMs ?? 4000;
+    const deadline = Date.now() + (opts?.timeoutMs ?? 10 * 60 * 1000);
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, intervalMs));
+      const { status } = await this.getGenerateImageStatus(submit.key);
+      if (status === 'done') return { url: submit.url };
+      if (status === 'failed' || status === 'not_found') {
+        throw new SurfAPIError(`Image generation ${status}`, 502);
+      }
+    }
+    throw new SurfAPIError('Image generation timed out', 504);
+  }
 }
 
 // ==========================================================================

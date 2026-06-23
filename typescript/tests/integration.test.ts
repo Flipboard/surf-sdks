@@ -15,7 +15,7 @@
 
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { SurfClient, SurfRTBClient, SurfAuthError, SurfScopeError } from '../src/index';
+import { SurfClient, SurfRTBClient, SurfAuthError, SurfScopeError, SurfAPIError } from '../src/index';
 
 // ---------------------------------------------------------------------------
 // Config
@@ -500,6 +500,59 @@ describe('AI', { concurrency: false }, () => {
       throw err;
     }
   });
+});
+
+// ---------------------------------------------------------------------------
+// 6b. Media — AI image generation
+// Gated: GPU-bound (20–60s) and burns the 20/day image quota, so it only runs
+// when SURF_RUN_AI_IMAGE_TESTS=1. Verifies request shape + response parsing.
+// ---------------------------------------------------------------------------
+
+describe('Media (AI image generation)', { concurrency: false }, () => {
+  const runImageTests = process.env.SURF_RUN_AI_IMAGE_TESTS === '1';
+
+  // Submit is async and returns immediately, so no long timeout is needed; we
+  // disable retries so a 429 daily-cap response (with a long Retry-After) is
+  // surfaced for a clean skip instead of stalling the run.
+  const imageClient = new SurfClient({
+    apiKey: API_TOKEN,
+    baseUrl: BASE_URL,
+    maxRetries: 0,
+  });
+
+  it(
+    'should generate a feed cover image',
+    {
+      skip: runImageTests
+        ? false
+        : 'set SURF_RUN_AI_IMAGE_TESTS=1 to run (consumes the 20/day GPU image quota)',
+    },
+    async () => {
+      try {
+        // Submit only (async): validates the { key, url, status } contract without
+        // burning ~90s polling for the image.
+        const job = await imageClient.media.generateImage(
+          'a calm minimalist landscape, soft pastels',
+          { skipRefiner: true },
+        );
+        assert.ok(job?.key, 'Should return a job key');
+        assert.ok(job?.url, 'Should return the eventual image URL');
+        assert.equal(job?.status, 'pending', 'Submit status should be pending');
+      } catch (err) {
+        if (isScopeOrAuth(err)) {
+          console.log('  [skip] Token lacks use:ai scope');
+          return;
+        }
+        // Expected operational states: daily cap hit (429) or service down (502/503).
+        const status = err instanceof SurfAPIError ? err.statusCode : 0;
+        if (status === 429 || status === 502 || status === 503) {
+          console.log(`  [skip] image generation unavailable (HTTP ${status})`);
+          return;
+        }
+        throw err;
+      }
+    },
+  );
 });
 
 // ---------------------------------------------------------------------------

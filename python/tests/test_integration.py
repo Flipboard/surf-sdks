@@ -353,6 +353,35 @@ class TestAI:
 
 
 # ---------------------------------------------------------------------------
+# Media — AI image generation
+# Gated: GPU-bound (20-60s) and consumes the 20/day image quota, so it only
+# runs when SURF_RUN_AI_IMAGE_TESTS=1. Validates request/response compatibility.
+# ---------------------------------------------------------------------------
+
+class TestMediaImageGeneration:
+    @pytest.mark.skipif(
+        os.environ.get("SURF_RUN_AI_IMAGE_TESTS") != "1",
+        reason="set SURF_RUN_AI_IMAGE_TESTS=1 to run (consumes the 20/day GPU image quota)",
+    )
+    def test_generate_image(self, client):
+        # Submit only (async): validates the {key, url, status} contract without
+        # burning ~90s polling for the image.
+        try:
+            result = skip_on_scope(lambda: client.media.generate_image(
+                "a calm minimalist landscape, soft pastels", skip_refiner=True))
+            if result is not None:
+                assert result.get("key"), "Expected a job key"
+                assert result.get("url"), "Expected the eventual image URL"
+                assert result.get("status") == "pending", "Submit status should be pending"
+        except SurfAPIError as e:
+            if e.status_code == 429:
+                pytest.skip("image generation daily limit exceeded (20/day)")
+            if e.status_code in (502, 503):
+                pytest.skip("image generation service unavailable")
+            raise
+
+
+# ---------------------------------------------------------------------------
 # Error Handling
 # ---------------------------------------------------------------------------
 

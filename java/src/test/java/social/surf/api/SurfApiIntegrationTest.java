@@ -13,6 +13,7 @@ import social.surf.api.model.Feed;
 import social.surf.api.model.FeedOperator;
 import social.surf.api.model.FeedSummary;
 import social.surf.api.model.FeedTheme;
+import social.surf.api.model.GenerateImageJob;
 import social.surf.api.model.NewFeedOperator;
 
 import java.util.ArrayList;
@@ -469,6 +470,36 @@ class SurfApiIntegrationTest {
             assertNotNull(summary.feedSummary(), "Feed summary text should not be null");
             assertFalse(summary.feedSummary().isEmpty(), "Feed summary text should not be empty");
         } catch (SurfAPIError e) {
+            skipOnScopeOrAuth(e);
+        }
+    }
+
+    /**
+     * AI image generation (async submit). Gated: consumes the 20/day image quota,
+     * so it only runs when {@code SURF_RUN_AI_IMAGE_TESTS=1}. Validates the submit
+     * request/response contract ({@code key}/{@code url}/{@code status}); the poll
+     * loop is covered by {@code generateImageAndWait} but not exercised here to
+     * keep the test fast.
+     */
+    @Test
+    @Order(602)
+    void generateImage() {
+        Assumptions.assumeTrue("1".equals(System.getenv("SURF_RUN_AI_IMAGE_TESTS")),
+                "set SURF_RUN_AI_IMAGE_TESTS=1 to run (consumes the 20/day GPU image quota)");
+        try {
+            GenerateImageJob job =
+                    client.media.generateImage("a calm minimalist landscape, soft pastels", true);
+            assertNotNull(job, "Submit response should not be null");
+            assertNotNull(job.key(), "Job key should not be null");
+            assertNotNull(job.url(), "Eventual image URL should not be null");
+            assertEquals("pending", job.status(), "Submit status should be pending");
+        } catch (SurfAPIError e) {
+            // Expected operational states: daily cap hit (429) or service down (502/503).
+            int status = e.getStatusCode();
+            if (status == 429 || status == 502 || status == 503) {
+                Assumptions.assumeTrue(false,
+                        "Skipping — image generation unavailable (HTTP " + status + ")");
+            }
             skipOnScopeOrAuth(e);
         }
     }
