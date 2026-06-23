@@ -11,6 +11,7 @@ package surf
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -964,6 +965,76 @@ type MediaAPI struct{ c *Client }
 // Upload is not yet implemented — requires multipart form encoding.
 func (a *MediaAPI) Upload(filename string, data io.Reader) (json.RawMessage, error) {
 	return nil, fmt.Errorf("surf: media upload not yet implemented in Go SDK")
+}
+
+// GenerateImage starts AI generation of a feed cover image (Stable Diffusion XL)
+// and returns immediately. Async submit/poll: the response is {"key", "url",
+// "status": "pending"} — generation runs server-side and can take a couple of
+// minutes. Poll GenerateImageStatus with the key until "done", then use the url;
+// or call GenerateImageAndWait to do both. Requires the use:ai scope. skipRefiner
+// trades quality for speed.
+func (a *MediaAPI) GenerateImage(prompt string, skipRefiner bool) (json.RawMessage, error) {
+	return a.c.post("/media/generate-image", map[string]interface{}{
+		"prompt":      prompt,
+		"skipRefiner": skipRefiner,
+	})
+}
+
+// GenerateImageStatus polls a generation job started by GenerateImage. The
+// response is {"status": "pending"|"done"|"failed"|"not_found"}.
+func (a *MediaAPI) GenerateImageStatus(key string) (json.RawMessage, error) {
+	return a.c.get("/media/generate-image/status", url.Values{"key": {key}})
+}
+
+// GenerateImageAndWait submits a generation job and polls until it completes,
+// returning the image URL. It polls every pollInterval up to timeout (pass 0 for
+// the defaults: 4s interval, 10m timeout). Requires the use:ai scope.
+func (a *MediaAPI) GenerateImageAndWait(prompt string, skipRefiner bool, pollInterval, timeout time.Duration) (string, error) {
+	if pollInterval <= 0 {
+		pollInterval = 4 * time.Second
+	}
+	if timeout <= 0 {
+		timeout = 10 * time.Minute
+	}
+	raw, err := a.GenerateImage(prompt, skipRefiner)
+	if err != nil {
+		return "", err
+	}
+	var submit struct {
+		Key string `json:"key"`
+		URL string `json:"url"`
+	}
+	if err := json.Unmarshal(raw, &submit); err != nil {
+		return "", err
+	}
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		time.Sleep(pollInterval)
+		sraw, err := a.GenerateImageStatus(submit.Key)
+		if err != nil {
+			// Fail fast on permanent errors (auth/scope/not-found); only keep
+			// polling through transient ones (429 rate limit, 5xx, network).
+			var apiErr *APIError
+			if errors.As(err, &apiErr) &&
+				apiErr.StatusCode >= 400 && apiErr.StatusCode < 500 && apiErr.StatusCode != 429 {
+				return "", err
+			}
+			continue
+		}
+		var st struct {
+			Status string `json:"status"`
+		}
+		if err := json.Unmarshal(sraw, &st); err != nil {
+			continue
+		}
+		switch st.Status {
+		case "done":
+			return submit.URL, nil
+		case "failed", "not_found":
+			return "", fmt.Errorf("surf: image generation %s", st.Status)
+		}
+	}
+	return "", fmt.Errorf("surf: image generation timed out")
 }
 
 // =========================================================================

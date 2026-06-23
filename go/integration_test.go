@@ -635,6 +635,39 @@ func TestIntegration(t *testing.T) {
 				t.Error("Expected non-empty feed summary")
 			}
 		})
+
+		// Media — AI image generation. Gated: GPU-bound (20-60s) and burns the
+		// 20/day image quota, so it only runs when SURF_RUN_AI_IMAGE_TESTS=1.
+		t.Run("GenerateImage", func(t *testing.T) {
+			if os.Getenv("SURF_RUN_AI_IMAGE_TESTS") != "1" {
+				t.Skip("set SURF_RUN_AI_IMAGE_TESTS=1 to run (consumes the 20/day GPU image quota, 20-60s)")
+			}
+			// Submit only (async): validates the {key, url, status} contract without
+			// burning ~90s polling for the image.
+			raw, err := client.Media.GenerateImage("a calm minimalist landscape, soft pastels", true)
+			skipOnScope(t, err, "Token lacks use:ai scope")
+			if err != nil {
+				var apiErr *APIError
+				if errors.As(err, &apiErr) && (apiErr.StatusCode == 429 || apiErr.StatusCode == 502 || apiErr.StatusCode == 503) {
+					t.Skipf("image generation unavailable (HTTP %d)", apiErr.StatusCode)
+				}
+				t.Fatalf("Media.GenerateImage failed: %v", err)
+			}
+			var job struct {
+				Key    string `json:"key"`
+				URL    string `json:"url"`
+				Status string `json:"status"`
+			}
+			if err := json.Unmarshal(raw, &job); err != nil {
+				t.Fatalf("Failed to parse submit response: %v", err)
+			}
+			if job.Key == "" || job.URL == "" {
+				t.Error("Expected key and url in submit response")
+			}
+			if job.Status != "pending" {
+				t.Errorf("Expected status pending, got %q", job.Status)
+			}
+		})
 	})
 
 	// =====================================================================

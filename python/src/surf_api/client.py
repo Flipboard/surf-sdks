@@ -1037,6 +1037,40 @@ class _MediaAPI:
         self._c._check_errors(resp)
         return resp.json()
 
+    def generate_image(self, prompt: str, skip_refiner: bool = False) -> dict:
+        """Start AI generation of a feed cover image (Stable Diffusion XL).
+
+        Requires the ``use:ai`` scope. Async submit/poll: returns immediately with
+        ``{"key": ..., "url": ..., "status": "pending"}`` — generation runs server-side and can
+        take a couple of minutes. Poll :meth:`get_generate_image_status` with ``key``
+        until ``done``, then use ``url``. Or call :meth:`generate_image_and_wait` to do
+        both. ``skip_refiner`` trades quality for speed.
+        """
+        return self._c._post("/media/generate-image", json={"prompt": prompt, "skipRefiner": skip_refiner})
+
+    def get_generate_image_status(self, key: str) -> dict:
+        """Poll a generation job: ``{"status": "pending" | "done" | "failed" | "not_found"}``."""
+        return self._c._get("/media/generate-image/status", {"key": key})
+
+    def generate_image_and_wait(self, prompt: str, skip_refiner: bool = False,
+                                poll_interval: float = 4.0, timeout: float = 600.0) -> dict:
+        """Submit a generation job and poll until done, returning ``{"url": ...}``.
+
+        Polls every ``poll_interval`` seconds up to ``timeout`` seconds. Raises
+        :class:`SurfAPIError` if generation fails or times out.
+        """
+        import time as _time
+        submit = self.generate_image(prompt, skip_refiner=skip_refiner)
+        deadline = _time.monotonic() + timeout
+        while _time.monotonic() < deadline:
+            _time.sleep(poll_interval)
+            status = self.get_generate_image_status(submit["key"]).get("status")
+            if status == "done":
+                return {"url": submit["url"]}
+            if status in ("failed", "not_found"):
+                raise SurfAPIError(f"Image generation {status}", status_code=502)
+        raise SurfAPIError("Image generation timed out", status_code=504)
+
 
 # ==========================================================================
 # RTB (Real-Time Bidding)

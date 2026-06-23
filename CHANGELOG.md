@@ -7,6 +7,11 @@ All notable changes to the Surf API SDKs will be documented here. All SDKs share
 ## Unreleased
 
 ### Added
+- **AI cover-image generation** (Python, TypeScript, Go, Java) — Media API methods for generating a feed cover image from a text prompt (Stable Diffusion XL), requiring the `use:ai` scope. **Async submit/poll**: generation runs server-side and can take a couple of minutes (longer than request/CDN timeouts), so it doesn't block.
+  - `generate_image` / `generateImage` / `GenerateImage` — submits a job and returns immediately with `{ key, url, status: "pending" }` (Java: typed `GenerateImageJob`; Go: `json.RawMessage`). `skip_refiner` / `skipRefiner` trades quality for speed.
+  - `get_generate_image_status` / `getGenerateImageStatus` / `GenerateImageStatus` — polls a job: `{ status: "pending" | "done" | "failed" | "not_found" }`.
+  - `generate_image_and_wait` / `generateImageAndWait` / `GenerateImageAndWait` — convenience that submits and polls until done (default every 4s, up to 10 min), returning the image URL; raises/throws on failure or timeout.
+  - GPU-bound, so it has its own dedicated **20/day-per-app** cap (separate from the shared 100/day AI pool) plus a 20/day-per-user backstop; over-limit returns `429`.
 - **Nested posts on the `Post` model** — The typed `Post` model now exposes two optional self-referential nested posts: `reblog` (the reposted post, present on reposts) and `quote` (the quoted post, present on quote posts). Available in Python (`reblog` / `quote`), TypeScript (`reblog?` / `quote?`), and Go (`Reblog` / `Quote`); the Java SDK returns raw `Map<String, Object>` for posts and is unaffected.
 - **SurfRTBClient** (Python, TypeScript, Go, Java) -- RTB (Real-Time Bidding) client for programmatic ad buying. Uses the same `surf_sk_live_...` API key as `SurfClient` but targets the RTB endpoints. API key must include `rtb:bid` and/or `rtb:reports` scopes.
   - `bid()` -- send OpenRTB 2.5 bid requests with optional `sandbox=True` for testing without real spend
