@@ -58,6 +58,12 @@ public class SurfClient {
 
     public static final String DEFAULT_BASE_URL = "https://api.surf.social";
 
+    /**
+     * Base URL for developer-portal endpoints (diagnostics, debug bundles). These live on a
+     * different host than the {@code /v1} data API.
+     */
+    public static final String DEFAULT_DEVPORTAL_URL = "https://surf.social/devportal/v1";
+
     /** Internal path prefix — the SDK handles this automatically. */
     static final String API_PREFIX = "/v1";
     static final String USER_AGENT = "surf-api-java/1.0.0";
@@ -66,6 +72,7 @@ public class SurfClient {
 
     private final String apiKey;
     private final String baseUrl;
+    private String devportalUrl = DEFAULT_DEVPORTAL_URL;
     private final Duration timeout;
     private final int maxRetries;
     private final HttpClient httpClient;
@@ -85,6 +92,7 @@ public class SurfClient {
     public final PreferencesApi preferences;
     public final CustomFeedsApi customFeeds;
     public final MediaApi media;
+    public final DiagnosticsApi diagnostics;
 
     /** Create a client with the default base URL and a 30-second timeout. */
     public SurfClient(String apiKey) {
@@ -140,6 +148,7 @@ public class SurfClient {
         this.preferences = new PreferencesApi(this);
         this.customFeeds = new CustomFeedsApi(this);
         this.media = new MediaApi(this);
+        this.diagnostics = new DiagnosticsApi(this);
     }
 
     /** Rate limit info from the most recent request, or null if no request has been made. */
@@ -149,6 +158,24 @@ public class SurfClient {
 
     public String getBaseUrl() {
         return baseUrl;
+    }
+
+    /** Base URL for developer-portal endpoints (diagnostics, debug bundles). */
+    public String getDevportalUrl() {
+        return devportalUrl;
+    }
+
+    /**
+     * Override the developer-portal base URL (default {@value #DEFAULT_DEVPORTAL_URL}), used by
+     * {@link #diagnostics}. Returns this client for chaining.
+     */
+    public SurfClient setDevportalUrl(String devportalUrl) {
+        // Treat null/blank as "use the default" — an empty base would build a
+        // relative URI and HttpRequest.uri() requires an absolute one.
+        this.devportalUrl = (devportalUrl == null || devportalUrl.isBlank())
+                ? DEFAULT_DEVPORTAL_URL
+                : stripTrailingSlashes(devportalUrl);
+        return this;
     }
 
     // ----------------------------------------------------------------------
@@ -187,6 +214,27 @@ public class SurfClient {
 
     Map<String, Object> delete(String path) {
         return asMap(request("DELETE", path, null, null), path);
+    }
+
+    // --- Developer-portal helpers: hit an absolute URL (different host), bypassing API_PREFIX. ---
+
+    String devportalUrl(String path) {
+        return devportalUrl + path;
+    }
+
+    /** GET an absolute URL returning a JSON object (developer-portal host). */
+    Map<String, Object> getAbsolute(String absoluteUrl) {
+        return asMap(requestAbsolute("GET", absoluteUrl, null), absoluteUrl);
+    }
+
+    /** POST to an absolute URL returning a JSON object (developer-portal host). */
+    Map<String, Object> postAbsolute(String absoluteUrl, Object json) {
+        return asMap(requestAbsolute("POST", absoluteUrl, json), absoluteUrl);
+    }
+
+    /** DELETE an absolute URL returning a JSON object (developer-portal host). */
+    Map<String, Object> deleteAbsolute(String absoluteUrl) {
+        return asMap(requestAbsolute("DELETE", absoluteUrl, null), absoluteUrl);
     }
 
     // --- Typed JSON helpers: deserialize directly into model classes. ---
@@ -378,7 +426,12 @@ public class SurfClient {
                 throw new SurfAPIError("Request to " + path + " was interrupted");
             }
 
-            this.rateLimit = new RateLimitInfo(resp.headers());
+            // Only update from responses that carry rate-limit headers — devportal
+            // (diagnostics) responses omit them and would otherwise clobber the
+            // last real data-API rate limit with zeros.
+            if (resp.headers().firstValue("X-RateLimit-Limit").isPresent()) {
+                this.rateLimit = new RateLimitInfo(resp.headers());
+            }
             int status = resp.statusCode();
 
             if (status == 429 && attempt < maxRetries) {
@@ -400,6 +453,89 @@ public class SurfClient {
             return resp;
         }
         throw new SurfAPIError("Request to " + path + " failed after " + (maxRetries + 1) + " attempts");
+    }
+
+    // --- Absolute-URL variants (developer-portal host); same auth + retry behavior. ---
+
+    private Object requestAbsolute(String method, String absoluteUrl, Object jsonBody) {
+        HttpResponse<byte[]> resp = executeAbsolute(method, absoluteUrl, jsonBody, timeout);
+        if (resp.statusCode() == 204) {
+            return null;
+        }
+        return parse(resp.body(), absoluteUrl);
+    }
+
+    private HttpResponse<byte[]> executeAbsolute(String method, String absoluteUrl,
+                                                 Object jsonBody, Duration requestTimeout) {
+        HttpRequest req = buildRequestAbsolute(method, absoluteUrl, jsonBody, requestTimeout);
+        for (int attempt = 0; attempt <= maxRetries; attempt++) {
+            HttpResponse<byte[]> resp;
+            try {
+                resp = httpClient.send(req, HttpResponse.BodyHandlers.ofByteArray());
+            } catch (IOException e) {
+                if (attempt < maxRetries) {
+                    sleepSeconds(Math.min(1L << Math.min(attempt, 6), 60L));
+                    continue;
+                }
+                throw new SurfAPIError("Request to " + absoluteUrl + " failed: " + e.getMessage());
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new SurfAPIError("Request to " + absoluteUrl + " was interrupted");
+            }
+
+            // Only update from responses that carry rate-limit headers — devportal
+            // (diagnostics) responses omit them and would otherwise clobber the
+            // last real data-API rate limit with zeros.
+            if (resp.headers().firstValue("X-RateLimit-Limit").isPresent()) {
+                this.rateLimit = new RateLimitInfo(resp.headers());
+            }
+            int status = resp.statusCode();
+
+            if (status == 429 && attempt < maxRetries) {
+                int retryAfter = resp.headers().firstValue("Retry-After").map(s -> {
+                    try { return Integer.parseInt(s); } catch (NumberFormatException ex) { return 0; }
+                }).orElse(0);
+                if (retryAfter <= 0) retryAfter = 1 << Math.min(attempt, 6);
+                if (retryAfter > 60) retryAfter = 60;
+                sleepSeconds(retryAfter);
+                continue;
+            }
+
+            if (status >= 500 && attempt < maxRetries) {
+                sleepSeconds(Math.min(1L << Math.min(attempt, 6), 60L));
+                continue;
+            }
+
+            checkErrors(status, resp.headers(), resp.body());
+            return resp;
+        }
+        throw new SurfAPIError("Request to " + absoluteUrl + " failed after " + (maxRetries + 1) + " attempts");
+    }
+
+    private HttpRequest buildRequestAbsolute(String method, String absoluteUrl,
+                                             Object jsonBody, Duration requestTimeout) {
+        HttpRequest.Builder builder = HttpRequest.newBuilder()
+                .uri(URI.create(absoluteUrl))
+                .timeout(requestTimeout)
+                .header("X-API-Key", apiKey)
+                .header("Accept", "application/json")
+                .header("User-Agent", USER_AGENT);
+
+        HttpRequest.BodyPublisher publisher;
+        if (jsonBody != null) {
+            byte[] body;
+            try {
+                body = mapper.writeValueAsBytes(jsonBody);
+            } catch (IOException e) {
+                throw new SurfAPIError("Failed to encode request body: " + e.getMessage());
+            }
+            publisher = HttpRequest.BodyPublishers.ofByteArray(body);
+            builder.header("Content-Type", "application/json");
+        } else {
+            publisher = HttpRequest.BodyPublishers.noBody();
+        }
+
+        return builder.method(method, publisher).build();
     }
 
     private void sleepSeconds(long seconds) {

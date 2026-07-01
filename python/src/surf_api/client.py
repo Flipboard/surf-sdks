@@ -21,6 +21,10 @@ DEFAULT_BASE_URL = "https://api.surf.social"
 # Users only need to set the base URL (e.g., "https://api.surf.social").
 API_PREFIX = "/v1"
 
+# Developer-portal endpoints (diagnostics, debug bundles) live on a different
+# host/prefix than the v1 data API. Overridable for non-prod backends.
+DEFAULT_DEVPORTAL_URL = "https://surf.social/devportal/v1"
+
 
 class RateLimitInfo:
     """Rate limit information from response headers."""
@@ -70,9 +74,11 @@ class SurfClient:
         base_url: str = DEFAULT_BASE_URL,
         timeout: int = 30,
         max_retries: int = 3,
+        devportal_url: str = DEFAULT_DEVPORTAL_URL,
     ):
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
+        self.devportal_url = (devportal_url or DEFAULT_DEVPORTAL_URL).rstrip("/")
         self.timeout = timeout
         self.max_retries = max_retries
         self.rate_limit: Optional[RateLimitInfo] = None
@@ -96,18 +102,24 @@ class SurfClient:
         self.preferences = _PreferencesAPI(self)
         self.custom_feeds = _CustomFeedsAPI(self)
         self.media = _MediaAPI(self)
+        self.diagnostics = _DiagnosticsAPI(self)
 
     def _url(self, path: str) -> str:
         return f"{self.base_url}{API_PREFIX}{path}"
 
-    def _request(self, method: str, path: str, **kwargs) -> dict:
+    def _request(self, method: str, path: str, absolute: bool = False, **kwargs) -> dict:
         kwargs.setdefault("timeout", self.timeout)
+        url = path if absolute else self._url(path)
         import time as _time
         last_exc = None
         for attempt in range(self.max_retries + 1):
             try:
-                resp = self._session.request(method, self._url(path), **kwargs)
-                self.rate_limit = RateLimitInfo(resp.headers)
+                resp = self._session.request(method, url, **kwargs)
+                # Only update from responses that actually carry rate-limit
+                # headers — devportal (diagnostics) responses omit them and would
+                # otherwise clobber the last real data-API rate_limit with zeros.
+                if "X-RateLimit-Limit" in resp.headers:
+                    self.rate_limit = RateLimitInfo(resp.headers)
                 if resp.status_code == 429 and attempt < self.max_retries:
                     retry_after = int(resp.headers.get("Retry-After", 2 ** attempt))
                     _time.sleep(min(retry_after, 60))
@@ -153,6 +165,16 @@ class SurfClient:
 
     def _delete(self, path: str) -> dict:
         return self._request("DELETE", path)
+
+    # Developer-portal helpers (diagnostics, debug bundles) — different host.
+    def _dp_get(self, path: str, params: Optional[dict] = None) -> dict:
+        return self._request("GET", f"{self.devportal_url}{path}", absolute=True, params=_clean(params))
+
+    def _dp_post(self, path: str, json: Optional[dict] = None) -> dict:
+        return self._request("POST", f"{self.devportal_url}{path}", absolute=True, json=json)
+
+    def _dp_delete(self, path: str) -> dict:
+        return self._request("DELETE", f"{self.devportal_url}{path}", absolute=True)
 
     def _check_errors(self, resp: requests.Response):
         if resp.ok:
@@ -1241,6 +1263,48 @@ class SurfRTBClient:
         if app_id is not None:
             params["app_id"] = app_id
         return self._request("GET", "/ads-txt", params=params)
+
+
+class _DiagnosticsAPI:
+    """Self-service diagnostics and confidential debug-bundle sharing.
+
+    Lets your agent ask "what's wrong with my integration?" and, when handing a
+    problem to Surf's support agent, share a redacted, short-lived snapshot of
+    the diagnosis without exposing a credential.
+
+    Example:
+        diag = client.diagnostics.diagnose()        # this token's own app
+        for f in diag["findings"]:
+            print(f["severity"], f["title"], "->", f["recommendation"])
+
+        bundle = client.diagnostics.create_bundle(ttl_minutes=15)
+        print("Share with Surf support:", bundle["share_url"])
+    """
+
+    def __init__(self, client: SurfClient):
+        self._c = client
+
+    def diagnose(self, app_id: str = None) -> dict:
+        """Structured diagnosis (findings + token health + usage + errors).
+
+        With an app API key, omit `app_id` to diagnose that token's own app.
+        With a developer session, pass the app's public id.
+        """
+        path = f"/applications/{quote(app_id, safe='')}/diagnose" if app_id else "/diagnose"
+        return self._c._dp_get(path)
+
+    def create_bundle(self, app_id: str = None, ttl_minutes: int = 15) -> dict:
+        """Mint a redacted, expiring debug bundle. Returns share_token + share_url."""
+        path = f"/applications/{quote(app_id, safe='')}/debug-bundle" if app_id else "/debug-bundle"
+        return self._c._dp_post(path, json={"ttl_minutes": ttl_minutes})
+
+    def get_bundle(self, token: str) -> dict:
+        """Fetch a shared bundle by its share token (no auth required)."""
+        return self._c._dp_get(f"/debug-bundle/{quote(token, safe='')}")
+
+    def revoke_bundle(self, token: str) -> dict:
+        """Revoke a bundle you minted before it expires."""
+        return self._c._dp_delete(f"/debug-bundle/{quote(token, safe='')}")
 
 
 def _clean(params: Optional[dict]) -> Optional[dict]:
