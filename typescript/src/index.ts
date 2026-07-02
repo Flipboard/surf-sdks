@@ -34,6 +34,9 @@ export { SurfAgent } from './agent';
 export type { SurfAgentOptions, SurfAgentResult } from './agent';
 
 const DEFAULT_BASE_URL = 'https://api.surf.social';
+// Developer-portal endpoints (diagnostics, debug bundles) live on a different
+// host/prefix than the v1 data API. Overridable for non-prod backends.
+const DEFAULT_DEVPORTAL_URL = 'https://surf.social/devportal/v1';
 const API_PREFIX = '/v1';
 
 // ==========================================================================
@@ -85,6 +88,7 @@ export class SurfRateLimitError extends SurfAPIError {
 export class SurfClient {
   private readonly apiKey: string;
   private readonly baseUrl: string;
+  private readonly devportalUrl: string;
   private readonly timeout: number;
   private readonly maxRetries: number;
   private readonly _fetch: typeof fetch;
@@ -104,10 +108,12 @@ export class SurfClient {
   public readonly preferences: PreferencesAPI;
   public readonly customFeeds: CustomFeedsAPI;
   public readonly media: MediaAPI;
+  public readonly diagnostics: DiagnosticsAPI;
 
   constructor(options: SurfClientOptions) {
     this.apiKey = options.apiKey;
     this.baseUrl = (options.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, '');
+    this.devportalUrl = (options.devportalUrl || DEFAULT_DEVPORTAL_URL).replace(/\/+$/, '');
     this.timeout = options.timeout ?? 30_000;
     const r = options.maxRetries ?? 3;
     this.maxRetries = Number.isFinite(r) ? Math.max(0, Math.floor(r)) : 3;
@@ -124,6 +130,7 @@ export class SurfClient {
     this.preferences = new PreferencesAPI(this);
     this.customFeeds = new CustomFeedsAPI(this);
     this.media = new MediaAPI(this);
+    this.diagnostics = new DiagnosticsAPI(this);
   }
 
   /** @internal */
@@ -131,8 +138,10 @@ export class SurfClient {
     params?: Record<string, string | number | boolean | undefined>;
     json?: unknown;
     raw?: boolean;
+    /** When true, `path` is treated as a full URL (no base/prefix prepended). */
+    absolute?: boolean;
   }): Promise<T> {
-    let url = `${this.baseUrl}${API_PREFIX}${path}`;
+    let url = opts?.absolute ? path : `${this.baseUrl}${API_PREFIX}${path}`;
     if (opts?.params) {
       const qs = new URLSearchParams();
       for (const [k, v] of Object.entries(opts.params)) {
@@ -170,11 +179,17 @@ export class SurfClient {
           signal: controller.signal,
         });
 
-        this.rateLimit = {
-          limit: parseInt(resp.headers.get('X-RateLimit-Limit') ?? '0'),
-          remaining: parseInt(resp.headers.get('X-RateLimit-Remaining') ?? '0'),
-          reset: resp.headers.get('X-RateLimit-Reset'),
-        };
+        // Only update from responses that carry rate-limit headers — devportal
+        // (diagnostics) responses omit them and would otherwise clobber the last
+        // real data-API rateLimit with zeros.
+        const rlLimit = resp.headers.get('X-RateLimit-Limit');
+        if (rlLimit !== null) {
+          this.rateLimit = {
+            limit: parseInt(rlLimit),
+            remaining: parseInt(resp.headers.get('X-RateLimit-Remaining') ?? '0'),
+            reset: resp.headers.get('X-RateLimit-Reset'),
+          };
+        }
 
         if (resp.status === 429 && attempt < this.maxRetries) {
           clearTimeout(timer);
@@ -301,6 +316,20 @@ export class SurfClient {
   /** @internal */
   _delete<T = any>(path: string): Promise<T> {
     return this._request<T>('DELETE', path);
+  }
+
+  // Developer-portal helpers (diagnostics, debug bundles) — different host.
+  /** @internal */
+  _dpGet<T = any>(path: string, params?: Record<string, any>): Promise<T> {
+    return this._request<T>('GET', `${this.devportalUrl}${path}`, { params, absolute: true });
+  }
+  /** @internal */
+  _dpPost<T = any>(path: string, json?: unknown): Promise<T> {
+    return this._request<T>('POST', `${this.devportalUrl}${path}`, { json, absolute: true });
+  }
+  /** @internal */
+  _dpDelete<T = any>(path: string): Promise<T> {
+    return this._request<T>('DELETE', `${this.devportalUrl}${path}`, { absolute: true });
   }
 }
 
@@ -694,6 +723,55 @@ class MediaAPI {
       }
     }
     throw new SurfAPIError('Image generation timed out', 504);
+  }
+}
+
+// ==========================================================================
+// Diagnostics
+// ==========================================================================
+
+/**
+ * Self-service diagnostics and confidential debug-bundle sharing.
+ *
+ * Lets your agent ask "what's wrong with my integration?" and, when handing a
+ * problem to Surf's support agent, share a redacted, short-lived snapshot of
+ * the diagnosis without exposing a credential.
+ *
+ * @example
+ * ```ts
+ * const diag = await client.diagnostics.diagnose();   // this token's own app
+ * for (const f of diag.findings) {
+ *   console.log(f.severity, f.title, '->', f.recommendation);
+ * }
+ * const bundle = await client.diagnostics.createBundle({ ttlMinutes: 15 });
+ * console.log('Share with Surf support:', bundle.share_url);
+ * ```
+ */
+class DiagnosticsAPI {
+  constructor(private c: SurfClient) {}
+
+  /**
+   * Structured diagnosis (findings + token health + usage + errors).
+   * With an app API key, omit `appId` to diagnose that token's own app.
+   */
+  diagnose(appId?: string): Promise<any> {
+    return this.c._dpGet(appId ? `/applications/${encodeURIComponent(appId)}/diagnose` : '/diagnose');
+  }
+
+  /** Mint a redacted, expiring debug bundle. Returns share_token + share_url. */
+  createBundle(opts?: { appId?: string; ttlMinutes?: number }): Promise<any> {
+    const path = opts?.appId ? `/applications/${encodeURIComponent(opts.appId)}/debug-bundle` : '/debug-bundle';
+    return this.c._dpPost(path, { ttl_minutes: opts?.ttlMinutes ?? 15 });
+  }
+
+  /** Fetch a shared bundle by its share token (no auth required). */
+  getBundle(token: string): Promise<any> {
+    return this.c._dpGet(`/debug-bundle/${encodeURIComponent(token)}`);
+  }
+
+  /** Revoke a bundle you minted before it expires. */
+  revokeBundle(token: string): Promise<any> {
+    return this.c._dpDelete(`/debug-bundle/${encodeURIComponent(token)}`);
   }
 }
 

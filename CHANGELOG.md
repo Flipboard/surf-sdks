@@ -7,6 +7,11 @@ All notable changes to the Surf API SDKs will be documented here. All SDKs share
 ## Unreleased
 
 ### Added
+- **Diagnostics + confidential debug bundles** (Python, TypeScript, Go, Java) — new diagnostics namespace for the developer portal's agent-debugging surface: `client.diagnostics` (Python/TypeScript), `client.Diagnostics` (Go), `client.diagnostics` (Java). Targets the portal host (`https://surf.social/devportal/v1`) automatically; override with `devportal_url` (Python), `devportalUrl` (TypeScript), `WithDevportalURL(...)` (Go), or `setDevportalUrl(...)` (Java) for non-prod backends.
+  - `diagnose(app_id=None)` / `diagnose(appId?)` / `Diagnose(appID)` / `diagnose(appId)` — structured diagnosis (derived findings + token health + usage + error breakdown). With an app API key, omit the app id to diagnose that token's own app.
+  - `create_bundle(app_id=None, ttl_minutes=15)` / `createBundle({ appId?, ttlMinutes? })` / `CreateBundle(appID, ttlMinutes)` / `createBundle(appId, ttlMinutes)` — mint a redacted, short-lived snapshot to share with Surf support; returns `share_token` + `share_url`.
+  - `get_bundle(token)` / `getBundle(token)` / `GetBundle(token)` / `getBundle(token)` — fetch a shared bundle (no auth; the token is the capability).
+  - `revoke_bundle(token)` / `revokeBundle(token)` / `RevokeBundle(token)` / `revokeBundle(token)` — revoke a bundle before it expires.
 - **AI cover-image generation** (Python, TypeScript, Go, Java) — Media API methods for generating a feed cover image from a text prompt (Stable Diffusion XL), requiring the `use:ai` scope. **Async submit/poll**: generation runs server-side and can take a couple of minutes (longer than request/CDN timeouts), so it doesn't block.
   - `generate_image` / `generateImage` / `GenerateImage` — submits a job and returns immediately with `{ key, url, status: "pending" }` (Java: typed `GenerateImageJob`; Go: `json.RawMessage`). `skip_refiner` / `skipRefiner` trades quality for speed.
   - `get_generate_image_status` / `getGenerateImageStatus` / `GenerateImageStatus` — polls a job: `{ status: "pending" | "done" | "failed" | "not_found" }`.

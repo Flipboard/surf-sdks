@@ -36,6 +36,9 @@ from .exceptions import (
 )
 
 DEFAULT_BASE_URL = "https://api.surf.social"
+# Developer-portal endpoints (diagnostics, debug bundles) live on a different
+# host/prefix than the v1 data API. Overridable for non-prod backends.
+DEFAULT_DEVPORTAL_URL = "https://surf.social/devportal/v1"
 # Internal path prefix — the SDK handles this automatically.
 API_PREFIX = "/v1"
 
@@ -67,9 +70,11 @@ class AsyncSurfClient:
         base_url: str = DEFAULT_BASE_URL,
         timeout: float = 30.0,
         max_retries: int = 3,
+        devportal_url: str = DEFAULT_DEVPORTAL_URL,
     ):
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
+        self.devportal_url = (devportal_url or DEFAULT_DEVPORTAL_URL).rstrip("/")
         self.timeout = timeout
         self.max_retries = max_retries
         self.rate_limit: Optional[RateLimitInfo] = None
@@ -96,6 +101,7 @@ class AsyncSurfClient:
         self.preferences = _AsyncPreferencesAPI(self)
         self.custom_feeds = _AsyncCustomFeedsAPI(self)
         self.media = _AsyncMediaAPI(self)
+        self.diagnostics = _AsyncDiagnosticsAPI(self)
 
     async def __aenter__(self):
         return self
@@ -112,7 +118,11 @@ class AsyncSurfClient:
         for attempt in range(self.max_retries + 1):
             try:
                 resp = await self._client.request(method, path, **kwargs)
-                self.rate_limit = RateLimitInfo(resp.headers)
+                # Only update from responses that carry rate-limit headers —
+                # devportal (diagnostics) responses omit them and would otherwise
+                # clobber the last real data-API rate_limit with zeros.
+                if "X-RateLimit-Limit" in resp.headers:
+                    self.rate_limit = RateLimitInfo(resp.headers)
 
                 if resp.status_code == 429 and attempt < self.max_retries:
                     retry_after = int(resp.headers.get("retry-after", 2 ** attempt))
@@ -161,6 +171,17 @@ class AsyncSurfClient:
 
     async def _delete(self, path: str) -> dict:
         return await self._request("DELETE", path)
+
+    # Developer-portal helpers (diagnostics, debug bundles) — absolute URLs
+    # override the client's base_url in httpx.
+    async def _dp_get(self, path: str, params: Optional[dict] = None) -> dict:
+        return await self._request("GET", f"{self.devportal_url}{path}", params=_clean(params))
+
+    async def _dp_post(self, path: str, json: Optional[dict] = None) -> dict:
+        return await self._request("POST", f"{self.devportal_url}{path}", json=json)
+
+    async def _dp_delete(self, path: str) -> dict:
+        return await self._request("DELETE", f"{self.devportal_url}{path}")
 
     def _check_errors(self, resp: httpx.Response):
         if resp.is_success:
@@ -832,6 +853,36 @@ class AsyncSurfRTBClient:
         if app_id is not None:
             params["app_id"] = app_id
         return await self._request("GET", "/ads-txt", params=params)
+
+
+class _AsyncDiagnosticsAPI:
+    """Async self-service diagnostics and confidential debug-bundle sharing.
+
+    Mirrors :class:`surf_api.client._DiagnosticsAPI`. See ``client.diagnostics``
+    for usage.
+    """
+
+    def __init__(self, c: AsyncSurfClient):
+        self._c = c
+
+    async def diagnose(self, app_id: str = None) -> dict:
+        """Structured diagnosis. With an app API key, omit `app_id` to diagnose
+        that token's own app."""
+        path = f"/applications/{quote(app_id, safe='')}/diagnose" if app_id else "/diagnose"
+        return await self._c._dp_get(path)
+
+    async def create_bundle(self, app_id: str = None, ttl_minutes: int = 15) -> dict:
+        """Mint a redacted, expiring debug bundle. Returns share_token + share_url."""
+        path = f"/applications/{quote(app_id, safe='')}/debug-bundle" if app_id else "/debug-bundle"
+        return await self._c._dp_post(path, json={"ttl_minutes": ttl_minutes})
+
+    async def get_bundle(self, token: str) -> dict:
+        """Fetch a shared bundle by its share token (no auth required)."""
+        return await self._c._dp_get(f"/debug-bundle/{quote(token, safe='')}")
+
+    async def revoke_bundle(self, token: str) -> dict:
+        """Revoke a bundle you minted before it expires."""
+        return await self._c._dp_delete(f"/debug-bundle/{quote(token, safe='')}")
 
 
 def _clean(params: Optional[dict]) -> Optional[dict]:

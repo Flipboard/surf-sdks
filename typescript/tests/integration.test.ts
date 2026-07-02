@@ -15,7 +15,7 @@
 
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { SurfClient, SurfRTBClient, SurfAuthError, SurfScopeError, SurfAPIError } from '../src/index';
+import { SurfClient, SurfRTBClient, SurfAuthError, SurfScopeError, SurfNotFoundError, SurfAPIError } from '../src/index';
 
 // ---------------------------------------------------------------------------
 // Config
@@ -355,7 +355,9 @@ describe('Write Ops - Mastodon', { concurrency: false }, () => {
       postId = result?.id;
       assert.ok(postId, 'Should return a post ID');
     } catch (err) {
-      if (isScopeOrAuth(err)) {
+      // 404 here means the test account has no Mastodon linked account — the
+      // case this test already intends to skip (Surf returns not-found, not 401/403).
+      if (isScopeOrAuth(err) || err instanceof SurfNotFoundError) {
         skipped = true;
         console.log('  [skip] No mastodon linked account or missing write scope');
         return;

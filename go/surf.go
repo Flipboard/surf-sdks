@@ -17,20 +17,26 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 )
 
 const (
-	DefaultBaseURL = "https://api.surf.social"
-	apiPrefix      = "/v1"
-	userAgent      = "surf-api-go/1.0.0"
+	DefaultBaseURL      = "https://api.surf.social"
+	DefaultDevportalURL = "https://surf.social/devportal/v1"
+	apiPrefix           = "/v1"
+	userAgent           = "surf-api-go/1.0.0"
 )
 
 // Client is the Surf API client.
 type Client struct {
 	APIKey  string
 	BaseURL string
-	HTTP    *http.Client
+	// DevportalURL is the base URL for developer-portal endpoints (diagnostics),
+	// which live on a different host than the data API. Defaults to
+	// DefaultDevportalURL; override with WithDevportalURL.
+	DevportalURL string
+	HTTP         *http.Client
 
 	maxRetries int // set via WithMaxRetries option; default 3
 
@@ -46,6 +52,7 @@ type Client struct {
 	Preferences   *PreferencesAPI
 	CustomFeeds   *CustomFeedsAPI
 	Media         *MediaAPI
+	Diagnostics   *DiagnosticsAPI
 
 	// RateLimit is updated after each request.
 	RateLimit *RateLimitInfo
@@ -64,6 +71,16 @@ func WithMaxRetries(n int) ClientOption {
 	}
 }
 
+// WithDevportalURL overrides the developer-portal base URL used by the
+// Diagnostics API (default DefaultDevportalURL).
+func WithDevportalURL(u string) ClientOption {
+	return func(c *Client) {
+		if u != "" {
+			c.DevportalURL = strings.TrimRight(u, "/")
+		}
+	}
+}
+
 // RateLimitInfo holds rate limit data from response headers.
 type RateLimitInfo struct {
 	Limit     int
@@ -74,10 +91,11 @@ type RateLimitInfo struct {
 // NewClient creates a new Surf API client. Pass ClientOption values to override defaults.
 func NewClient(apiKey string, opts ...ClientOption) *Client {
 	c := &Client{
-		APIKey:     apiKey,
-		BaseURL:    DefaultBaseURL,
-		HTTP:       &http.Client{Timeout: 30 * time.Second},
-		maxRetries: 3,
+		APIKey:       apiKey,
+		BaseURL:      DefaultBaseURL,
+		DevportalURL: DefaultDevportalURL,
+		HTTP:         &http.Client{Timeout: 30 * time.Second},
+		maxRetries:   3,
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -93,6 +111,7 @@ func NewClient(apiKey string, opts ...ClientOption) *Client {
 	c.Preferences = &PreferencesAPI{c: c}
 	c.CustomFeeds = &CustomFeedsAPI{c: c}
 	c.Media = &MediaAPI{c: c}
+	c.Diagnostics = &DiagnosticsAPI{c: c}
 	return c
 }
 
@@ -237,6 +256,84 @@ func (c *Client) del(path string) error {
 
 func (c *Client) getRaw(path string, params url.Values) ([]byte, error) {
 	return c.do("GET", path, params, nil)
+}
+
+// doAbsolute performs a request against a fully-qualified URL (not routed
+// through c.url(), which appends /v1). Used by the Diagnostics API to reach the
+// developer-portal host. It reuses the same X-API-Key auth, retry-on-429/5xx and
+// APIError handling as do, but does not update c.RateLimit — the devportal host
+// does not return the data-API rate-limit headers.
+func (c *Client) doAbsolute(method, u string, body interface{}) (json.RawMessage, error) {
+	var bodyBytes []byte
+	if body != nil {
+		var err error
+		bodyBytes, err = json.Marshal(body)
+		if err != nil {
+			return nil, fmt.Errorf("surf: marshal body: %w", err)
+		}
+	}
+
+	for attempt := 0; attempt <= c.maxRetries; attempt++ {
+		var reqBody io.Reader
+		if bodyBytes != nil {
+			reqBody = bytes.NewReader(bodyBytes)
+		}
+
+		req, err := http.NewRequest(method, u, reqBody)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("X-API-Key", c.APIKey)
+		req.Header.Set("User-Agent", userAgent)
+		req.Header.Set("Accept", "application/json")
+		if bodyBytes != nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
+
+		resp, err := c.HTTP.Do(req)
+		if err != nil {
+			if attempt < c.maxRetries {
+				time.Sleep(cappedBackoff(attempt))
+				continue
+			}
+			return nil, err
+		}
+
+		data, readErr := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if readErr != nil {
+			return nil, readErr
+		}
+
+		if resp.StatusCode == 429 && attempt < c.maxRetries {
+			retryAfter := atoi(resp.Header.Get("Retry-After"))
+			if retryAfter <= 0 {
+				retryAfter = int(cappedBackoff(attempt).Seconds())
+			}
+			if retryAfter > 60 {
+				retryAfter = 60
+			}
+			time.Sleep(time.Duration(retryAfter) * time.Second)
+			continue
+		}
+
+		if resp.StatusCode >= 500 && attempt < c.maxRetries {
+			time.Sleep(cappedBackoff(attempt))
+			continue
+		}
+
+		if resp.StatusCode >= 400 {
+			apiErr := &APIError{StatusCode: resp.StatusCode}
+			_ = json.Unmarshal(data, apiErr)
+			if apiErr.Message == "" {
+				apiErr.Message = string(data)
+			}
+			return nil, apiErr
+		}
+
+		return json.RawMessage(data), nil
+	}
+	return nil, fmt.Errorf("surf: request failed after %d attempts", c.maxRetries+1)
 }
 
 func p(key, val string) url.Values {
@@ -1035,6 +1132,45 @@ func (a *MediaAPI) GenerateImageAndWait(prompt string, skipRefiner bool, pollInt
 		}
 	}
 	return "", fmt.Errorf("surf: image generation timed out")
+}
+
+// =========================================================================
+// Diagnostics
+// =========================================================================
+
+// DiagnosticsAPI provides developer-portal diagnostics: connectivity/config
+// checks and shareable debug bundles. Unlike the other sub-APIs it targets the
+// developer-portal host (c.DevportalURL) rather than the data API.
+type DiagnosticsAPI struct{ c *Client }
+
+// Diagnose runs diagnostic checks for the caller's credentials, or for a
+// specific application when appID is non-empty.
+func (a *DiagnosticsAPI) Diagnose(appID string) (json.RawMessage, error) {
+	path := "/diagnose"
+	if appID != "" {
+		path = "/applications/" + url.PathEscape(appID) + "/diagnose"
+	}
+	return a.c.doAbsolute("GET", a.c.DevportalURL+path, nil)
+}
+
+// CreateBundle creates a shareable debug bundle that expires after ttlMinutes.
+// When appID is non-empty the bundle is scoped to that application.
+func (a *DiagnosticsAPI) CreateBundle(appID string, ttlMinutes int) (json.RawMessage, error) {
+	path := "/debug-bundle"
+	if appID != "" {
+		path = "/applications/" + url.PathEscape(appID) + "/debug-bundle"
+	}
+	return a.c.doAbsolute("POST", a.c.DevportalURL+path, map[string]interface{}{"ttl_minutes": ttlMinutes})
+}
+
+// GetBundle fetches a previously created debug bundle by token.
+func (a *DiagnosticsAPI) GetBundle(token string) (json.RawMessage, error) {
+	return a.c.doAbsolute("GET", a.c.DevportalURL+"/debug-bundle/"+url.PathEscape(token), nil)
+}
+
+// RevokeBundle revokes a debug bundle by token before it expires.
+func (a *DiagnosticsAPI) RevokeBundle(token string) (json.RawMessage, error) {
+	return a.c.doAbsolute("DELETE", a.c.DevportalURL+"/debug-bundle/"+url.PathEscape(token), nil)
 }
 
 // =========================================================================

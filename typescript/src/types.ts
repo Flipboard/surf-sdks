@@ -11,6 +11,8 @@ export interface SurfClientOptions {
   apiKey: string;
   /** Base URL (default: https://api.surf.social) */
   baseUrl?: string;
+  /** Developer-portal base URL for diagnostics/debug bundles (default: https://surf.social/devportal/v1) */
+  devportalUrl?: string;
   /** Request timeout in ms (default: 30000) */
   timeout?: number;
   /** Custom fetch implementation (default: global fetch) */
