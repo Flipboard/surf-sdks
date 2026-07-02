@@ -380,8 +380,8 @@ class _AsyncSearchAPI:
     async def feeds(self, query: str, limit: int = 20) -> dict:
         return await self.search(query, type="feeds", limit=limit)
 
-    async def posts(self, query: str, limit: int = 20) -> dict:
-        return await self.search(query, type="posts", limit=limit)
+    async def posts(self, query: str, limit: int = 20, sort: str = None) -> dict:
+        return await self.search(query, type="posts", limit=limit, sort=sort)
 
     async def accounts(self, query: str, limit: int = 20) -> dict:
         return await self.search(query, type="accounts", limit=limit)
