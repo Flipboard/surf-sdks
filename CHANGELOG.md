@@ -6,6 +6,9 @@ All notable changes to the Surf API SDKs will be documented here. All SDKs share
 
 ## Unreleased
 
+### Fixed
+- **Search repointed to current endpoints** (Python sync+async, Go) — `search(type=…)` and the `posts()`/`feeds()`/`accounts()`/`podcasts()` helpers were calling a removed unified `/search` endpoint that now returns `404`. Each type is routed to its live path: `posts`→`/search/posts`, `feeds`→`/search/maestra/feeds`, `accounts`→`/search/bluesky/searchActors`, `podcasts`→`/search/maestra/feeds`, `rss`→`/search/rss/search`. Post search gains an optional `sort` (`"recent"` for newest-first, else relevance); unknown types now raise a clear error instead of silently 404ing. (The Java SDK has no endpoint-level search; only a `/search` integration-test path needs updating.)
+
 ## v1.2.0 -- 2026-07-02
 
 ### Added

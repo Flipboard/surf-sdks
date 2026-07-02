@@ -427,25 +427,36 @@ class _FeedsAPI:
 # ==========================================================================
 
 class _SearchAPI:
-    """Search operations (read:search scope).
+    """Search operations (read:search scope). Each type maps to its own endpoint."""
 
-    The consolidated /search endpoint supports type=feeds|posts|accounts|podcasts|rss.
-    """
+    _PATHS = {
+        "posts": "/search/posts",
+        "feeds": "/search/maestra/feeds",
+        "accounts": "/search/bluesky/searchActors",
+        "podcasts": "/search/maestra/feeds",
+        "rss": "/search/rss/search",
+    }
 
     def __init__(self, client: SurfClient):
         self._c = client
 
-    def search(self, query: str, type: str = "feeds", limit: int = 20) -> dict:
-        """Unified search. type: feeds, posts, accounts, podcasts, rss."""
-        return self._c._get("/search", {"q": query, "type": type, "limit": limit})
+    def search(self, query: str, type: str = "feeds", limit: int = 20, sort: str = None) -> dict:
+        """Search. type: feeds, posts, accounts, podcasts, rss. `sort` (posts only): 'recent'."""
+        path = self._PATHS.get(type)
+        if path is None:
+            raise ValueError(f"unsupported search type: {type!r}")
+        params = {"q": query, "limit": limit}
+        if type == "posts" and sort:
+            params["sort"] = sort
+        return self._c._get(path, params)
 
     def feeds(self, query: str, limit: int = 20) -> dict:
         """Search for feeds."""
         return self.search(query, type="feeds", limit=limit)
 
-    def posts(self, query: str, limit: int = 20) -> dict:
-        """Search for posts."""
-        return self.search(query, type="posts", limit=limit)
+    def posts(self, query: str, limit: int = 20, sort: str = None) -> dict:
+        """Search for posts. `sort`: 'recent' for newest-first, else relevance."""
+        return self.search(query, type="posts", limit=limit, sort=sort)
 
     def accounts(self, query: str, limit: int = 20) -> dict:
         """Search for accounts."""

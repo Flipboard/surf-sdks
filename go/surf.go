@@ -642,11 +642,23 @@ func (a *FeedsAPI) GetSpeedDial() (json.RawMessage, error) {
 // SearchAPI provides search operations across feeds, posts, accounts, and podcasts.
 type SearchAPI struct{ c *Client }
 
+var searchPaths = map[string]string{
+	"posts":    "/search/posts",
+	"feeds":    "/search/maestra/feeds",
+	"accounts": "/search/bluesky/searchActors",
+	"podcasts": "/search/maestra/feeds",
+	"rss":      "/search/rss/search",
+}
+
 func (a *SearchAPI) Search(q, typ string, limit int) (json.RawMessage, error) {
 	if typ == "" {
 		typ = "feeds"
 	}
-	return a.c.get("/search", url.Values{"q": {q}, "type": {typ}, "limit": {strconv.Itoa(limit)}})
+	path, ok := searchPaths[typ]
+	if !ok {
+		return nil, fmt.Errorf("unsupported search type: %s", typ)
+	}
+	return a.c.get(path, url.Values{"q": {q}, "limit": {strconv.Itoa(limit)}})
 }
 
 func (a *SearchAPI) Feeds(q string, limit int) (json.RawMessage, error) {
