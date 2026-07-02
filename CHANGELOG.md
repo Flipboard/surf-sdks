@@ -6,6 +6,8 @@ All notable changes to the Surf API SDKs will be documented here. All SDKs share
 
 ## Unreleased
 
+## v1.2.0 -- 2026-07-02
+
 ### Added
 - **Diagnostics + confidential debug bundles** (Python, TypeScript, Go, Java) — new diagnostics namespace for the developer portal's agent-debugging surface: `client.diagnostics` (Python/TypeScript), `client.Diagnostics` (Go), `client.diagnostics` (Java). Targets the portal host (`https://surf.social/devportal/v1`) automatically; override with `devportal_url` (Python), `devportalUrl` (TypeScript), `WithDevportalURL(...)` (Go), or `setDevportalUrl(...)` (Java) for non-prod backends.
   - `diagnose(app_id=None)` / `diagnose(appId?)` / `Diagnose(appID)` / `diagnose(appId)` — structured diagnosis (derived findings + token health + usage + error breakdown). With an app API key, omit the app id to diagnose that token's own app.
