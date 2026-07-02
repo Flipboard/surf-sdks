@@ -357,17 +357,31 @@ class _AsyncFeedsAPI:
 # ==========================================================================
 
 class _AsyncSearchAPI:
+    _PATHS = {
+        "posts": "/search/posts",
+        "feeds": "/search/maestra/feeds",
+        "accounts": "/search/bluesky/searchActors",
+        "podcasts": "/search/maestra/feeds",
+        "rss": "/search/rss/search",
+    }
+
     def __init__(self, c: AsyncSurfClient):
         self._c = c
 
-    async def search(self, query: str, type: str = "feeds", limit: int = 20) -> dict:
-        return await self._c._get("/search", {"q": query, "type": type, "limit": limit})
+    async def search(self, query: str, type: str = "feeds", limit: int = 20, sort: str = None) -> dict:
+        path = self._PATHS.get(type)
+        if path is None:
+            raise ValueError(f"unsupported search type: {type!r}")
+        params = {"q": query, "limit": limit}
+        if type == "posts" and sort:
+            params["sort"] = sort
+        return await self._c._get(path, params)
 
     async def feeds(self, query: str, limit: int = 20) -> dict:
         return await self.search(query, type="feeds", limit=limit)
 
-    async def posts(self, query: str, limit: int = 20) -> dict:
-        return await self.search(query, type="posts", limit=limit)
+    async def posts(self, query: str, limit: int = 20, sort: str = None) -> dict:
+        return await self.search(query, type="posts", limit=limit, sort=sort)
 
     async def accounts(self, query: str, limit: int = 20) -> dict:
         return await self.search(query, type="accounts", limit=limit)
