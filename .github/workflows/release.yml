@@ -1,0 +1,72 @@
+name: release
+
+# Fires when scripts/release.sh pushes a v* tag. Verifies the four SDKs are in
+# lock-step with the tag, publishes a GitHub Release from the CHANGELOG section,
+# and announces to Discord. We do NOT publish packages (none are published).
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write        # create the GitHub Release
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Derive version and verify no drift
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          echo "TAG=$TAG"         >> "$GITHUB_ENV"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+          py=$(grep -oE '^version = "[0-9]+\.[0-9]+\.[0-9]+"' python/pyproject.toml | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+          ts=$(grep -oE '"version": "[0-9]+\.[0-9]+\.[0-9]+"' typescript/package.json | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+          jv=$(grep -oE "^version = '[0-9]+\.[0-9]+\.[0-9]+'" java/build.gradle | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+          echo "tag=$VERSION python=$py ts=$ts java=$jv"
+          for v in "$py" "$ts" "$jv"; do
+            if [ "$v" != "$VERSION" ]; then
+              echo "::error::version drift — a version file ($v) does not match tag ($VERSION). Use scripts/release.sh."
+              exit 1
+            fi
+          done
+
+      - name: Extract release notes from CHANGELOG
+        run: |
+          awk -v hdr="## v${VERSION} " '
+            index($0, hdr) == 1 { f=1; next }
+            /^## v/ && f { exit }
+            f { print }
+          ' CHANGELOG.md | sed '/^[[:space:]]*$/{/./!d}' > /tmp/notes.md
+          if [ ! -s /tmp/notes.md ]; then echo "See CHANGELOG.md." > /tmp/notes.md; fi
+          echo "----- notes -----"; cat /tmp/notes.md
+
+      - name: Create GitHub Release
+        run: gh release create "$TAG" --title "surf-sdks $TAG" --notes-file /tmp/notes.md
+
+      - name: Announce on Discord
+        if: ${{ env.DISCORD_WEBHOOK_URL != '' }}
+        run: |
+          python3 - "$TAG" <<'PY' > /tmp/payload.json
+          import json, sys
+          tag = sys.argv[1]
+          body = open('/tmp/notes.md').read().strip()[:3800] or "See release notes."
+          print(json.dumps({"embeds": [{
+              "title": f"surf-sdks {tag} released",
+              "url": f"https://github.com/Flipboard/surf-sdks/releases/tag/{tag}",
+              "description": body,
+              "color": 3066993
+          }]}))
+          PY
+          curl -sS -X POST -H "Content-Type: application/json" -d @/tmp/payload.json "$DISCORD_WEBHOOK_URL"
+
+      - name: Discord skipped notice
+        if: ${{ env.DISCORD_WEBHOOK_URL == '' }}
+        run: echo "DISCORD_WEBHOOK_URL secret not set — skipped Discord announcement."
