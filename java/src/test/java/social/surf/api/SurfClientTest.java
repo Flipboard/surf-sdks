@@ -358,7 +358,7 @@ class SurfClientTest {
         assertTrue(lastBody.get().contains("\"text\":\"The sky is blue.\""), lastBody.get());
 
         assertNull(result.postSurfId());
-        assertEquals("mostly true", result.verdict());
+        assertEquals("MOSTLY TRUE", result.verdict());
         assertEquals("The claim is largely supported.", result.answer());
         assertEquals(1, result.paragraphs().size());
         assertEquals("Supported by sources.", result.paragraphs().get(0).text());
