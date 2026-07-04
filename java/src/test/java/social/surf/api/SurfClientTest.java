@@ -7,6 +7,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import social.surf.api.model.CustomFeed;
+import social.surf.api.model.FactCheck;
 import social.surf.api.model.Feed;
 import social.surf.api.model.FeedSummary;
 import social.surf.api.model.Notification;
@@ -339,6 +340,34 @@ class SurfClientTest {
 
         FeedSummary summary = client().ai.feedSummary("surf/topic/technology");
         assertEquals("Lots of AI news today.", summary.feedSummary());
+    }
+
+    @Test
+    void factCheckDeserializesCamelCaseKeysAndPostsBody() {
+        handler = ex -> json(ex, 200, "{\"postSurfId\":null,\"verdict\":\"MOSTLY TRUE\","
+                + "\"answer\":\"The claim is largely supported.\","
+                + "\"paragraphs\":[{\"text\":\"Supported by sources.\",\"citationIndices\":[0,1]}],"
+                + "\"citations\":[{\"type\":\"web\",\"url\":\"https://a.example\",\"surfId\":null},"
+                + "{\"type\":\"post\",\"url\":null,\"surfId\":\"surf/post/xyz\"}]}");
+
+        FactCheck result = client().ai.factCheck("The sky is blue.");
+
+        assertEquals("POST", lastMethod.get());
+        assertEquals("/v1/ai/fact-check", lastPath.get());
+        // Request body uses camelCase key `text`.
+        assertTrue(lastBody.get().contains("\"text\":\"The sky is blue.\""), lastBody.get());
+
+        assertNull(result.postSurfId());
+        assertEquals("mostly true", result.verdict());
+        assertEquals("The claim is largely supported.", result.answer());
+        assertEquals(1, result.paragraphs().size());
+        assertEquals("Supported by sources.", result.paragraphs().get(0).text());
+        assertEquals(List.of(0, 1), result.paragraphs().get(0).citationIndices());
+        assertEquals(2, result.citations().size());
+        assertEquals("web", result.citations().get(0).type());
+        assertEquals("https://a.example", result.citations().get(0).url());
+        assertNull(result.citations().get(0).surfId());
+        assertEquals("surf/post/xyz", result.citations().get(1).surfId());
     }
 
     @Test

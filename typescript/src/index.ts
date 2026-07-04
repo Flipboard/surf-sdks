@@ -415,6 +415,18 @@ class AIAPI {
   threadSummary(post_at: string) {
     return this.c._get('/ai/thread-summary', { post_at });
   }
+  /** Fact-check a claim, paragraph, or post. Provide exactly one of `text` or `postSurfId`. */
+  factCheck(opts: { text?: string; postSurfId?: string; feedId?: string }) {
+    const provided = [opts.text, opts.postSurfId].filter((v) => v !== undefined).length;
+    if (provided !== 1) {
+      throw new Error("factCheck requires exactly one of 'text' or 'postSurfId'");
+    }
+    const body: Record<string, string> = {};
+    if (opts.text !== undefined) body.text = opts.text;
+    if (opts.postSurfId !== undefined) body.postSurfId = opts.postSurfId;
+    if (opts.feedId !== undefined) body.feedId = opts.feedId;
+    return this.c._post('/ai/fact-check', body);
+  }
   async *buildFeed(prompt: string, feed_id?: string): AsyncGenerator<string> {
     const resp = await this.c._request<Response>('POST', '/ai/feed-builder', {
       json: { prompt, feed_id },

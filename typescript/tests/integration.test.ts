@@ -502,6 +502,20 @@ describe('AI', { concurrency: false }, () => {
       throw err;
     }
   });
+
+  it('should fact-check a claim', async () => {
+    if (skipped) return;
+    try {
+      const result: any = await client.ai.factCheck({ text: 'The Eiffel Tower is in Berlin.' });
+      assert.ok(result, 'Should return a fact-check result');
+    } catch (err) {
+      if (isScopeOrAuth(err)) {
+        console.log('  [skip] Token lacks use:ai scope');
+        return;
+      }
+      throw err;
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------

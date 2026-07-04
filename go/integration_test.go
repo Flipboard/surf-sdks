@@ -636,6 +636,21 @@ func TestIntegration(t *testing.T) {
 			}
 		})
 
+		t.Run("FactCheck", func(t *testing.T) {
+			raw, err := client.AI.FactCheck("The Great Wall of China is visible from space with the naked eye.", "", "")
+			skipOnScope(t, err, "Token lacks use:ai scope")
+			if err != nil {
+				var apiErr *APIError
+				if errors.As(err, &apiErr) && apiErr.StatusCode == 429 {
+					t.Skip("AI rate limit exceeded (10/day)")
+				}
+				t.Fatalf("AI.FactCheck failed: %v", err)
+			}
+			if len(raw) == 0 {
+				t.Error("Expected non-empty fact-check response")
+			}
+		})
+
 		// Media — AI image generation. Gated: GPU-bound (20-60s) and burns the
 		// 20/day image quota, so it only runs when SURF_RUN_AI_IMAGE_TESTS=1.
 		t.Run("GenerateImage", func(t *testing.T) {
