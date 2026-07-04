@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 import social.surf.api.model.CustomFeed;
+import social.surf.api.model.FactCheck;
 import social.surf.api.model.Feed;
 import social.surf.api.model.FeedOperator;
 import social.surf.api.model.FeedSummary;
@@ -469,6 +470,19 @@ class SurfApiIntegrationTest {
             assertNotNull(summary, "Feed summary should not be null");
             assertNotNull(summary.feedSummary(), "Feed summary text should not be null");
             assertFalse(summary.feedSummary().isEmpty(), "Feed summary text should not be empty");
+        } catch (SurfAPIError e) {
+            skipOnScopeOrAuth(e);
+        }
+    }
+
+    @Test
+    @Order(603)
+    void aiFactCheck() {
+        try {
+            FactCheck result = client.ai.factCheck("The Eiffel Tower is located in Paris, France.");
+            assertNotNull(result, "Fact-check result should not be null");
+            assertNotNull(result.verdict(), "Fact-check verdict should not be null");
+            assertNotNull(result.answer(), "Fact-check answer should not be null");
         } catch (SurfAPIError e) {
             skipOnScopeOrAuth(e);
         }

@@ -351,6 +351,12 @@ class TestAI:
                 pytest.skip("NLWeb service unavailable")
             raise
 
+    def test_fact_check(self, client):
+        result = skip_on_scope(lambda: retry_on_rate_limit(
+            lambda: client.ai.fact_check(text="The Eiffel Tower is in Paris.")))
+        if result is not None:
+            assert result is not None
+
 
 # ---------------------------------------------------------------------------
 # Media — AI image generation

@@ -1,5 +1,6 @@
 package social.surf.api;
 
+import social.surf.api.model.FactCheck;
 import social.surf.api.model.FeedSummary;
 import social.surf.api.model.PostSummary;
 
@@ -45,6 +46,48 @@ public class AiApi {
     /** AI-generated summary of a Bluesky post thread. */
     public PostSummary threadSummary(String postAt) {
         return c.getAs("/ai/thread-summary", map("post_at", postAt), PostSummary.class);
+    }
+
+    /**
+     * Fact-check a piece of text.
+     *
+     * @param text the claim, paragraph, or post text to fact-check
+     * @return the fact-check verdict, answer, cited paragraphs, and citations
+     */
+    public FactCheck factCheck(String text) {
+        return c.postAs("/ai/fact-check", map("text", text), FactCheck.class);
+    }
+
+    /**
+     * Fact-check a piece of text, restricting citations to a given feed.
+     *
+     * @param text   the claim, paragraph, or post text to fact-check
+     * @param feedId optional feed to scope the fact-check to (may be null)
+     * @return the fact-check verdict, answer, cited paragraphs, and citations
+     */
+    public FactCheck factCheck(String text, String feedId) {
+        return c.postAs("/ai/fact-check", map("text", text, "feedId", feedId), FactCheck.class);
+    }
+
+    /**
+     * Fact-check an existing Surf post by its surf id.
+     *
+     * @param postSurfId the surf id of the post to fact-check
+     * @param feedId     optional feed to scope the fact-check to (may be null)
+     * @return the fact-check verdict, answer, cited paragraphs, and citations
+     */
+    public FactCheck factCheckPost(String postSurfId, String feedId) {
+        return c.postAs("/ai/fact-check", map("postSurfId", postSurfId, "feedId", feedId), FactCheck.class);
+    }
+
+    /**
+     * Fact-check an existing Surf post by its surf id.
+     *
+     * @param postSurfId the surf id of the post to fact-check
+     * @return the fact-check verdict, answer, cited paragraphs, and citations
+     */
+    public FactCheck factCheckPost(String postSurfId) {
+        return factCheckPost(postSurfId, null);
     }
 
     /**

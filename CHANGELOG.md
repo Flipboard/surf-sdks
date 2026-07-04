@@ -6,6 +6,14 @@ All notable changes to the Surf API SDKs will be documented here. All SDKs share
 
 ## Unreleased
 
+### Added
+- **Fact-checking** (Python sync+async, TypeScript, Go, Java) — wraps the new `POST /ai/fact-check` endpoint (`use:ai` scope). Fact-check a claim, paragraph, or post and get back a structured verdict (`TRUE` / `MOSTLY TRUE` / `MIXED` / `MISLEADING` / `MOSTLY FALSE` / `FALSE` / `UNVERIFIABLE`), a one-line `answer`, per-claim `paragraphs` (each with `citationIndices`), and a flat `citations` list (web sources + the checked post). Powered by Claude with live web search; response fields are camelCase. Provide exactly one of `text` (arbitrary content, e.g. a briefing paragraph) or `postSurfId` (an existing Surf post); optional `feedId` for the post path.
+  - `client.ai.fact_check(text=…, post_surf_id=…, feed_id=…)` (Python, sync + async) — returns a dict.
+  - `client.ai.factCheck({ text?, postSurfId?, feedId? })` (TypeScript).
+  - `client.AI.FactCheck(text, postSurfID, feedID string)` (Go) — returns `json.RawMessage`.
+  - `client.ai.factCheck(text[, feedId])` / `client.ai.factCheckPost(postSurfId[, feedId])` (Java) — returns the typed `FactCheck` model.
+  - Also exposed as the `fact_check` MCP tool on the Surf MCP server (read-only, requires auth).
+
 ### Fixed
 - **Search repointed to current endpoints** (Python sync+async, Go) — `search(type=…)` and the `posts()`/`feeds()`/`accounts()`/`podcasts()` helpers were calling a removed unified `/search` endpoint that now returns `404`. Each type is routed to its live path: `posts`→`/search/posts`, `feeds`→`/search/maestra/feeds`, `accounts`→`/search/bluesky/searchActors`, `podcasts`→`/search/maestra/feeds`, `rss`→`/search/rss/search`. Post search gains an optional `sort` (`"recent"` for newest-first, else relevance); unknown types now raise a clear error instead of silently 404ing. (The Java SDK has no endpoint-level search; only a `/search` integration-test path needs updating.)
 

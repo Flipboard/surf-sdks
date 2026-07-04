@@ -414,6 +414,22 @@ class _AsyncAIAPI:
     async def thread_summary(self, post_at: str) -> dict:
         return await self._c._get("/ai/thread-summary", {"post_at": post_at})
 
+    async def fact_check(self, text: str = None, post_surf_id: str = None,
+                         feed_id: str = None) -> dict:
+        """Fact-check a claim, paragraph, or post.
+
+        Provide exactly one of ``text`` or ``post_surf_id``. The server
+        returns 400 if neither or both are given.
+        """
+        body = {}
+        if text is not None:
+            body["text"] = text
+        if post_surf_id is not None:
+            body["postSurfId"] = post_surf_id
+        if feed_id is not None:
+            body["feedId"] = feed_id
+        return await self._c._post("/ai/fact-check", json=body)
+
     async def build_feed(self, prompt: str, feed_id: str = None) -> AsyncIterator[str]:
         """Build a custom feed using AI (SSE stream)."""
         async with self._c._client.stream(

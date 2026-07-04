@@ -85,6 +85,7 @@ mirroring the backend DTOs. Every model is annotated `@JsonIgnoreProperties(igno
 | `feeds.getPosts(...)`, `feeds.getFollowing()` | `List<Map<String, Object>>` (posts are dynamic) |
 | `ai.feedSummary(...)` | `FeedSummary` |
 | `ai.threadSummary(...)` | `PostSummary` |
+| `ai.factCheck(...)`, `ai.factCheckPost(...)` | `FactCheck` |
 | `account.get()`, `account.update(...)` | `Account` |
 | `account.getLinks()` | `List<ProfileLink>` |
 | `account.addLink(...)`, `account.updateLink(...)` | `ProfileLink` |
