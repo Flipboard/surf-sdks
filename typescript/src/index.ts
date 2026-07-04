@@ -417,6 +417,10 @@ class AIAPI {
   }
   /** Fact-check a claim, paragraph, or post. Provide exactly one of `text` or `postSurfId`. */
   factCheck(opts: { text?: string; postSurfId?: string; feedId?: string }) {
+    const provided = [opts.text, opts.postSurfId].filter((v) => v !== undefined).length;
+    if (provided !== 1) {
+      throw new Error("factCheck requires exactly one of 'text' or 'postSurfId'");
+    }
     const body: Record<string, string> = {};
     if (opts.text !== undefined) body.text = opts.text;
     if (opts.postSurfId !== undefined) body.postSurfId = opts.postSurfId;

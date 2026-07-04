@@ -355,7 +355,8 @@ class TestAI:
         result = skip_on_scope(lambda: retry_on_rate_limit(
             lambda: client.ai.fact_check(text="The Eiffel Tower is in Paris.")))
         if result is not None:
-            assert result is not None
+            assert isinstance(result, dict)
+            assert "verdict" in result
 
 
 # ---------------------------------------------------------------------------

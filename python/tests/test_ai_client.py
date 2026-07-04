@@ -54,7 +54,7 @@ class TestFactCheck:
     def test_returns_parsed_response(self):
         sample = {
             "postSurfId": None,
-            "verdict": "true",
+            "verdict": "TRUE",
             "answer": "Yes.",
             "paragraphs": [{"text": "Yes.", "citationIndices": [0]}],
             "citations": [{"type": "web", "url": "http://x", "surfId": None}],
@@ -62,3 +62,12 @@ class TestFactCheck:
         api = _api(sample)
         result = api.fact_check(text="claim")
         assert result == sample
+
+    def test_requires_exactly_one_input(self):
+        api = _api()
+        with pytest.raises(ValueError):
+            api.fact_check()
+        with pytest.raises(ValueError):
+            api.fact_check(text="a", post_surf_id="surf/post/abc")
+        # No request should have been made for the invalid calls.
+        assert api._c.calls == []

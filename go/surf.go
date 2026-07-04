@@ -713,6 +713,9 @@ func (a *AIAPI) BuildFeed(prompt string, feedId string) (json.RawMessage, error)
 // or postSurfID; feedID is optional. Returns the raw JSON response containing
 // the verdict, answer, per-paragraph breakdown, and citations.
 func (a *AIAPI) FactCheck(text, postSurfID, feedID string) (json.RawMessage, error) {
+	if (text == "") == (postSurfID == "") {
+		return nil, fmt.Errorf("surf: provide exactly one of text or postSurfID")
+	}
 	body := map[string]string{}
 	if text != "" {
 		body["text"] = text

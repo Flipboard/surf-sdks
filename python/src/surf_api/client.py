@@ -501,9 +501,11 @@ class _AIAPI:
                    feed_id: str = None) -> dict:
         """Fact-check a claim, paragraph, or post.
 
-        Provide exactly one of ``text`` or ``post_surf_id``. The server
-        returns 400 if neither or both are given.
+        Provide exactly one of ``text`` or ``post_surf_id``; raises
+        ``ValueError`` if neither or both are given.
         """
+        if bool(text) == bool(post_surf_id):
+            raise ValueError("provide exactly one of 'text' or 'post_surf_id'")
         body = {}
         if text is not None:
             body["text"] = text

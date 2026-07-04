@@ -344,7 +344,7 @@ class SurfClientTest {
 
     @Test
     void factCheckDeserializesCamelCaseKeysAndPostsBody() {
-        handler = ex -> json(ex, 200, "{\"postSurfId\":null,\"verdict\":\"mostly true\","
+        handler = ex -> json(ex, 200, "{\"postSurfId\":null,\"verdict\":\"MOSTLY TRUE\","
                 + "\"answer\":\"The claim is largely supported.\","
                 + "\"paragraphs\":[{\"text\":\"Supported by sources.\",\"citationIndices\":[0,1]}],"
                 + "\"citations\":[{\"type\":\"web\",\"url\":\"https://a.example\",\"surfId\":null},"
