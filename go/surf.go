@@ -664,9 +664,53 @@ func (a *SearchAPI) Search(q, typ string, limit int) (json.RawMessage, error) {
 func (a *SearchAPI) Feeds(q string, limit int) (json.RawMessage, error) {
 	return a.Search(q, "feeds", limit)
 }
-func (a *SearchAPI) Posts(q string, limit int) (json.RawMessage, error) {
-	return a.Search(q, "posts", limit)
+
+// postSearchParams holds the post-only search options set via PostSearchOption.
+type postSearchParams struct {
+	sort      string
+	since     string
+	automated *bool
 }
+
+// PostSearchOption configures an optional parameter of Posts.
+type PostSearchOption func(*postSearchParams)
+
+// WithSort sets the post sort: "recent" (newest-first) or "top" (relevance/engagement).
+func WithSort(sort string) PostSearchOption {
+	return func(p *postSearchParams) { p.sort = sort }
+}
+
+// WithSince restricts results to a recent window, e.g. "24h", "7d", "30m", "90s".
+// Pair with WithSort("top") for a "recent AND engaged" (trending) result.
+func WithSince(since string) PostSearchOption {
+	return func(p *postSearchParams) { p.since = since }
+}
+
+// WithAutomated sets the automated filter; false drops bot/bridge-account posts server-side.
+func WithAutomated(automated bool) PostSearchOption {
+	return func(p *postSearchParams) { p.automated = &automated }
+}
+
+// Posts searches individual posts. Optional post-only params (sort, since, automated)
+// are supplied via PostSearchOption, e.g. Posts(q, 20, WithSort("top"), WithSince("24h")).
+func (a *SearchAPI) Posts(q string, limit int, opts ...PostSearchOption) (json.RawMessage, error) {
+	var p postSearchParams
+	for _, o := range opts {
+		o(&p)
+	}
+	v := url.Values{"q": {q}, "limit": {strconv.Itoa(limit)}}
+	if p.sort != "" {
+		v.Set("sort", p.sort)
+	}
+	if p.since != "" {
+		v.Set("since", p.since)
+	}
+	if p.automated != nil {
+		v.Set("automated", strconv.FormatBool(*p.automated))
+	}
+	return a.c.get("/search/posts", v)
+}
+
 func (a *SearchAPI) Accounts(q string, limit int) (json.RawMessage, error) {
 	return a.Search(q, "accounts", limit)
 }

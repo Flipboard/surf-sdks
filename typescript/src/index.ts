@@ -382,15 +382,40 @@ class FeedsAPI {
 // Search
 // ==========================================================================
 
-/** Search across feeds, posts, accounts, and podcasts. */
+/** Post-only search options (ignored for other types). */
+interface PostSearchOptions {
+  /** 'recent' (newest-first) or 'top' (relevance/engagement); omit for relevance. */
+  sort?: 'recent' | 'top';
+  /** Recency window, e.g. '24h', '7d', '30m', '90s'. Pair with sort:'top' for trending. */
+  since?: string;
+  /** false drops bot/bridge-account posts server-side. */
+  automated?: boolean;
+}
+
+/** Search across feeds, posts, accounts, and podcasts. Each type maps to its own endpoint. */
 class SearchAPI {
+  private static readonly PATHS = {
+    posts: '/search/posts',
+    feeds: '/search/maestra/feeds',
+    accounts: '/search/bluesky/searchActors',
+    podcasts: '/search/maestra/feeds',
+    rss: '/search/rss/search',
+  } as const;
+
   constructor(private c: SurfClient) {}
 
   search(q: string, type: 'feeds' | 'posts' | 'accounts' | 'podcasts' | 'rss' = 'feeds', limit = 20) {
-    return this.c._get('/search', { q, type, limit });
+    const path = SearchAPI.PATHS[type];
+    if (!path) throw new Error(`unsupported search type: ${type}`);
+    return this.c._get(path, { q, limit });
   }
   feeds(q: string, limit = 20) { return this.search(q, 'feeds', limit); }
-  posts(q: string, limit = 20) { return this.search(q, 'posts', limit); }
+  posts(q: string, limit = 20, opts?: PostSearchOptions) {
+    return this.c._get(SearchAPI.PATHS.posts, {
+      q, limit, sort: opts?.sort, since: opts?.since,
+      automated: opts?.automated === undefined ? undefined : String(opts.automated),
+    });
+  }
   accounts(q: string, limit = 20) { return this.search(q, 'accounts', limit); }
   podcasts(q: string, limit = 20) { return this.search(q, 'podcasts', limit); }
   discover(type: 'recommended' | 'similar' | 'interests' = 'recommended', opts?: { surf_id?: string; limit?: number }) {
