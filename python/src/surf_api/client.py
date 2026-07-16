@@ -440,23 +440,40 @@ class _SearchAPI:
     def __init__(self, client: SurfClient):
         self._c = client
 
-    def search(self, query: str, type: str = "feeds", limit: int = 20, sort: str = None) -> dict:
-        """Search. type: feeds, posts, accounts, podcasts, rss. `sort` (posts only): 'recent'."""
+    def search(self, query: str, type: str = "feeds", limit: int = 20, sort: str = None,
+               since: str = None, automated: bool = None) -> dict:
+        """Search. type: feeds, posts, accounts, podcasts, rss.
+
+        Post-only options (ignored for other types):
+          sort: 'recent' (newest-first), 'top' (relevance/engagement), or omit.
+          since: recency window, e.g. '24h', '7d', '30m', '90s'. Pair with sort='top'
+                 for a "recent AND engaged" (trending) result.
+          automated: False drops bot/bridge-account posts server-side.
+        """
         path = self._PATHS.get(type)
         if path is None:
             raise ValueError(f"unsupported search type: {type!r}")
         params = {"q": query, "limit": limit}
-        if type == "posts" and sort:
-            params["sort"] = sort
+        if type == "posts":
+            if sort:
+                params["sort"] = sort
+            if since:
+                params["since"] = since
+            if automated is not None:
+                params["automated"] = "true" if automated else "false"
         return self._c._get(path, params)
 
     def feeds(self, query: str, limit: int = 20) -> dict:
         """Search for feeds."""
         return self.search(query, type="feeds", limit=limit)
 
-    def posts(self, query: str, limit: int = 20, sort: str = None) -> dict:
-        """Search for posts. `sort`: 'recent' for newest-first, else relevance."""
-        return self.search(query, type="posts", limit=limit, sort=sort)
+    def posts(self, query: str, limit: int = 20, sort: str = None,
+              since: str = None, automated: bool = None) -> dict:
+        """Search for posts. `sort`: 'recent' newest-first, 'top' relevance/engagement.
+        `since`: recency window ('24h', '7d', …); pair with sort='top' for trending.
+        `automated`: False drops bot/bridge-account posts."""
+        return self.search(query, type="posts", limit=limit, sort=sort,
+                           since=since, automated=automated)
 
     def accounts(self, query: str, limit: int = 20) -> dict:
         """Search for accounts."""

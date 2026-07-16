@@ -68,3 +68,33 @@ class TestSearchRouting:
         api = _api()
         api.search("cyberpunk", type="posts")
         assert "sort" not in api._c.calls[0][1]
+
+    def test_posts_trending_since_and_top_sort(self):
+        api = _api()
+        api.posts("cyberpunk", sort="top", since="24h")
+        path, params = api._c.calls[0]
+        assert path == "/search/posts"
+        assert params.get("sort") == "top"
+        assert params.get("since") == "24h"
+
+    def test_posts_automated_false_serializes_to_string(self):
+        api = _api()
+        api.posts("cyberpunk", automated=False)
+        assert api._c.calls[0][1].get("automated") == "false"
+
+    def test_posts_automated_true_serializes_to_string(self):
+        api = _api()
+        api.posts("cyberpunk", automated=True)
+        assert api._c.calls[0][1].get("automated") == "true"
+
+    def test_posts_omits_since_and_automated_by_default(self):
+        api = _api()
+        api.posts("cyberpunk")
+        params = api._c.calls[0][1]
+        assert "since" not in params and "automated" not in params
+
+    def test_since_and_automated_ignored_for_non_post_types(self):
+        api = _api()
+        api.search("tech", type="feeds", since="24h", automated=False)
+        params = api._c.calls[0][1]
+        assert "since" not in params and "automated" not in params

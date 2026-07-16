@@ -7,10 +7,20 @@ import static social.surf.api.SurfClient.map;
 /**
  * Search operations ({@code read:search} scope).
  *
- * <p>The consolidated {@code /search} endpoint supports
- * {@code type=feeds|posts|accounts|podcasts|rss}.
+ * <p>Each search type maps to its own backend endpoint (the unified {@code /search}
+ * endpoint is deprecated): {@code posts} -> {@code /search/posts},
+ * {@code feeds}/{@code podcasts} -> {@code /search/maestra/feeds},
+ * {@code accounts} -> {@code /search/bluesky/searchActors},
+ * {@code rss} -> {@code /search/rss/search}.
  */
 public class SearchApi {
+
+    private static final Map<String, String> PATHS = Map.of(
+        "posts", "/search/posts",
+        "feeds", "/search/maestra/feeds",
+        "accounts", "/search/bluesky/searchActors",
+        "podcasts", "/search/maestra/feeds",
+        "rss", "/search/rss/search");
 
     private final SurfClient c;
 
@@ -18,19 +28,24 @@ public class SearchApi {
         this.c = client;
     }
 
-    /** Unified search (default type {@code feeds}, limit 20). */
+    /** Search (default type {@code feeds}, limit 20). */
     public Map<String, Object> search(String query) {
         return search(query, "feeds", 20);
     }
 
-    /** Unified search with a type. */
+    /** Search with a type. */
     public Map<String, Object> search(String query, String type) {
         return search(query, type, 20);
     }
 
-    /** Unified search. type: feeds, posts, accounts, podcasts, rss. */
+    /** Search. type: feeds, posts, accounts, podcasts, rss. */
     public Map<String, Object> search(String query, String type, int limit) {
-        return c.get("/search", map("q", query, "type", type, "limit", limit));
+        String path = PATHS.get(type);
+        if (path == null) {
+            throw new IllegalArgumentException(
+                "unsupported search type: '" + type + "'; supported types are " + PATHS.keySet());
+        }
+        return c.get(path, map("q", query, "limit", limit));
     }
 
     public Map<String, Object> feeds(String query) {
@@ -47,6 +62,21 @@ public class SearchApi {
 
     public Map<String, Object> posts(String query, int limit) {
         return search(query, "posts", limit);
+    }
+
+    /**
+     * Search posts with the post-only options. {@code sort}: "recent" (newest-first) or
+     * "top" (relevance/engagement); {@code since}: recency window ("24h", "7d", "30m",
+     * "90s") — pair with sort="top" for a trending result; {@code automated}: {@code false}
+     * drops bot/bridge-account posts. Any argument may be {@code null} to omit it.
+     */
+    public Map<String, Object> posts(String query, int limit, String sort, String since, Boolean automated) {
+        return c.get("/search/posts", map(
+            "q", query,
+            "limit", limit,
+            "sort", sort,
+            "since", since,
+            "automated", automated == null ? null : String.valueOf(automated)));
     }
 
     public Map<String, Object> accounts(String query) {

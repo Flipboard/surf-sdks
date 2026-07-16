@@ -13,9 +13,14 @@ All notable changes to the Surf API SDKs will be documented here. All SDKs share
   - `client.AI.FactCheck(text, postSurfID, feedID string)` (Go) — returns `json.RawMessage`.
   - `client.ai.factCheck(text[, feedId])` / `client.ai.factCheckPost(postSurfId[, feedId])` (Java) — returns the typed `FactCheck` model.
   - Also exposed as the `fact_check` MCP tool on the Surf MCP server (read-only, requires auth).
+- **Trending + bot-filter options on post search** (Python sync+async, TypeScript, Go, Java) — `/search/posts` now takes two more optional params, surfaced on the `posts()` helper:
+  - `since` — restrict to a recent window (`"24h"`, `"7d"`, `"30m"`, `"90s"`, or bare seconds). Pair with `sort="top"` for a "recent **and** engaged" (trending) result — engagement-ranked within a fresh window.
+  - `automated` — pass `false` to drop bot/bridge-account posts server-side (the softer classes stay filterable via each post's `flipboard.automated_reason`).
+  - `sort` now also accepts `"top"` (relevance/engagement) alongside `"recent"` (newest-first); Go's post search gains `sort` for the first time.
+  - Shapes: `client.search.posts(q, limit, sort=…, since=…, automated=…)` (Python); `client.search.posts(q, limit, { sort, since, automated })` (TypeScript); `client.Search.Posts(q, limit, surf.WithSort(…), surf.WithSince(…), surf.WithAutomated(…))` (Go); `client.search.posts(q, limit, sort, since, automated)` (Java).
 
 ### Fixed
-- **Search repointed to current endpoints** (Python sync+async, Go) — `search(type=…)` and the `posts()`/`feeds()`/`accounts()`/`podcasts()` helpers were calling a removed unified `/search` endpoint that now returns `404`. Each type is routed to its live path: `posts`→`/search/posts`, `feeds`→`/search/maestra/feeds`, `accounts`→`/search/bluesky/searchActors`, `podcasts`→`/search/maestra/feeds`, `rss`→`/search/rss/search`. Post search gains an optional `sort` (`"recent"` for newest-first, else relevance); unknown types now raise a clear error instead of silently 404ing. (The Java SDK has no endpoint-level search; only a `/search` integration-test path needs updating.)
+- **Search repointed to current endpoints** (Python sync+async, TypeScript, Go, Java) — `search(type=…)` and the `posts()`/`feeds()`/`accounts()`/`podcasts()` helpers were calling a removed unified `/search` endpoint that now returns `404`. Each type is routed to its live path: `posts`→`/search/posts`, `feeds`→`/search/maestra/feeds`, `accounts`→`/search/bluesky/searchActors`, `podcasts`→`/search/maestra/feeds`, `rss`→`/search/rss/search`. Unknown types now raise a clear error instead of silently 404ing. (Previously only Python and Go were repointed; TypeScript and Java still hit the deprecated `/search` and are now fixed too.)
 
 ## v1.2.0 -- 2026-07-02
 

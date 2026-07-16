@@ -542,8 +542,8 @@ class SurfApiIntegrationTest {
 
         final String key = itemKey;
         List<Object> items = new ArrayList<>();
-        for (Object item : client.paginate("/search", key,
-                Map.of("q", "technology", "type", "feeds", "limit", "2"), 4)) {
+        for (Object item : client.paginate("/search/maestra/feeds", key,
+                Map.of("q", "technology", "limit", "2"), 4)) {
             items.add(item);
         }
 
