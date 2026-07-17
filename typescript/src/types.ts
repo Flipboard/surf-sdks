@@ -138,6 +138,8 @@ export interface Post {
   podcast?: boolean;
   paywall?: boolean;
   orientation?: string;
+  /** Longform document summary, present when the post links to a standard.site / Leaflet document. */
+  document?: DocumentSummary;
 }
 
 /** URL resolution result. */
@@ -166,6 +168,63 @@ export interface ConnectedApp {
   scopes: string;
   authorized_at: string;
   last_used: string;
+}
+
+/** A longform publication (standard.site / Leaflet). */
+export interface Publication {
+  /** Publication AT-URI. */
+  uri: string;
+  name?: string;
+  description?: string;
+  icon_url?: string;
+  did?: string;
+  publisher_handle?: string;
+  publisher_display_name?: string;
+  publisher_avatar?: string;
+}
+
+/** A longform document (standard.site / Leaflet). */
+export interface Document {
+  /** Document AT-URI. */
+  id: string;
+  title?: string;
+  description?: string;
+  published_at?: string;
+  path?: string;
+  cover_image_url?: string;
+  tags?: string[];
+  publication_uri?: string;
+  publication?: Publication;
+  author?: { did: string; handle?: string };
+  comments_count: number;
+  /** Rendered HTML content — present when fetched with format 'html' (the default). */
+  content_html?: string;
+  /** Raw block pages — present when fetched with format 'blocks'. */
+  pages?: unknown[];
+}
+
+/**
+ * Compact document summary attached as `document` on longform posts in feed and
+ * search responses. (Publication document listings use PublicationDocumentEntry.)
+ */
+export interface DocumentSummary {
+  title?: string;
+  description?: string;
+  cover_image_url?: string;
+  tags?: string[];
+  publication_uri?: string;
+}
+
+/** Entry in a publication's document listing. */
+export interface PublicationDocumentEntry {
+  /** Document AT-URI. */
+  uri: string;
+  title?: string;
+  description?: string;
+  path?: string;
+  cover_image_url?: string;
+  published_at?: string;
+  tags?: string[];
 }
 
 /** Post enrichment data. */

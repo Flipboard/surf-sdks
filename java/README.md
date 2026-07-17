@@ -67,6 +67,7 @@ System.out.println(client.ai.feedSummary("surf/topic/technology").feedSummary())
 - **Account**: User info, lookup, profile links, connected apps
 - **Notifications**: Read notifications, manage badge counts
 - **Content**: URL resolution, article extraction, language detection, enrichment
+- **Longform**: standard.site / Leaflet documents & publications (fetch, list, search)
 - **Images**: AI image analysis (describe, classify, OCR, object detection)
 - **Media**: Upload images for posts
 - **Write Operations**: Post, favourite, boost, bookmark, delete — with `service` targeting (Bluesky/Mastodon)
@@ -93,6 +94,10 @@ mirroring the backend DTOs. Every model is annotated `@JsonIgnoreProperties(igno
 | `customFeeds.list()` | `List<CustomFeed>` |
 | `customFeeds.get/create/update/clone/publish/...Operator(...)` | `CustomFeed` |
 | `media.upload(...)` | `MediaUploadResponse` |
+| `longform.getDocument(...)` | `Document` |
+| `longform.getPublication(...)` | `Publication` |
+| `longform.listDocuments(...)` | `List<PublicationDocumentEntry>` |
+| `longform.searchPublications(...)`, `search.publications(...)` | `List<Publication>` |
 
 Everything else (search, single posts, content/image/audio, preferences) returns
 `Map<String, Object>` or `byte[]`, matching how the backend returns those payloads.
@@ -182,6 +187,31 @@ Map<String, Object> briefing = client.audio.getBriefing();
 // Convert text to speech (returns MP3 bytes)
 byte[] mp3 = client.audio.textToSpeech("Hello from Surf");
 ```
+
+## Longform (standard.site / Leaflet)
+
+Documents and publications are addressed by AT-URI — pass the raw URI, the SDK
+percent-encodes it into the path automatically.
+
+```java
+// Fetch a document (default format "html" -> contentHtml(); "blocks" -> pages())
+Document doc = client.longform.getDocument("at://did:plc:x/site.standard.document/3k2a");
+System.out.println(doc.title() + "\n" + doc.contentHtml());
+
+// Fetch its publication
+Publication pub = client.longform.getPublication(doc.publicationUri());
+
+// List a publication's documents (tags filter, count, offset)
+List<PublicationDocumentEntry> entries =
+        client.longform.listDocuments(pub.uri(), List.of("tech"), 50, 0);
+
+// Search publications (read:search scope) — also available as client.search.publications(...)
+List<Publication> pubs = client.longform.searchPublications("urbanism");
+```
+
+Post maps may include an optional `document` summary object
+(`title`, `description`, `cover_image_url`, `tags`, `publication_uri`) when a post
+links to a longform document.
 
 ## AI Feed Builder (streaming)
 

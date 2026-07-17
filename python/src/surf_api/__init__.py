@@ -3,6 +3,7 @@
 from .client import SurfClient, SurfRTBClient, FeedTheme, NewFeedOperator, FeedFilter
 from .models import (
     Post,
+    DocumentSummary,
     FeedMeta,
     PostAccount,
     Card,
@@ -44,6 +45,7 @@ __all__ = [
     "SurfScopeError",
     "generate_pkce",
     "Post",
+    "DocumentSummary",
     "FeedMeta",
     "PostAccount",
     "Card",

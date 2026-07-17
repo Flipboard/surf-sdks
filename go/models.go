@@ -1,5 +1,7 @@
 package surf
 
+import "encoding/json"
+
 // Post is a Mastodon-compatible status object returned by the Surf API.
 type Post struct {
 	ID               string            `json:"id"`
@@ -24,6 +26,17 @@ type Post struct {
 	Podcast          *bool             `json:"podcast,omitempty"`
 	Paywall          *bool             `json:"paywall,omitempty"`
 	Orientation      *string           `json:"orientation,omitempty"`
+	Document         *PostDocument     `json:"document,omitempty"`
+}
+
+// PostDocument is the optional longform-document summary attached to a Post
+// that links to a standard.site / Leaflet document.
+type PostDocument struct {
+	Title          string   `json:"title,omitempty"`
+	Description    string   `json:"description,omitempty"`
+	CoverImageURL  string   `json:"cover_image_url,omitempty"`
+	Tags           []string `json:"tags,omitempty"`
+	PublicationURI string   `json:"publication_uri,omitempty"`
 }
 
 // PostAccount is the author of a post.
@@ -153,6 +166,56 @@ type ConnectedApp struct {
 	Scopes          string `json:"scopes"`
 	AuthorizedAt    string `json:"authorized_at"`
 	LastUsed        string `json:"last_used"`
+}
+
+// Document is a longform document (standard.site / Leaflet) returned by
+// LongformAPI.Document. ContentHTML is populated for the "html" format (the
+// default); Pages carries the raw block pages for the "blocks" format.
+type Document struct {
+	ID             string            `json:"id"`
+	Title          string            `json:"title,omitempty"`
+	Description    string            `json:"description,omitempty"`
+	PublishedAt    string            `json:"published_at,omitempty"`
+	Path           string            `json:"path,omitempty"`
+	CoverImageURL  string            `json:"cover_image_url,omitempty"`
+	Tags           []string          `json:"tags,omitempty"`
+	PublicationURI string            `json:"publication_uri,omitempty"`
+	Publication    *Publication      `json:"publication,omitempty"`
+	Author         *DocumentAuthor   `json:"author,omitempty"`
+	CommentsCount  int               `json:"comments_count"`
+	ContentHTML    string            `json:"content_html,omitempty"`
+	Pages          []json.RawMessage `json:"pages,omitempty"`
+}
+
+// DocumentAuthor identifies the author of a longform document.
+type DocumentAuthor struct {
+	DID    string `json:"did"`
+	Handle string `json:"handle,omitempty"`
+}
+
+// Publication is a longform publication (standard.site / Leaflet) returned
+// by LongformAPI.Publication and LongformAPI.SearchPublications.
+type Publication struct {
+	URI                  string `json:"uri"`
+	Name                 string `json:"name,omitempty"`
+	Description          string `json:"description,omitempty"`
+	IconURL              string `json:"icon_url,omitempty"`
+	DID                  string `json:"did,omitempty"`
+	PublisherHandle      string `json:"publisher_handle,omitempty"`
+	PublisherDisplayName string `json:"publisher_display_name,omitempty"`
+	PublisherAvatar      string `json:"publisher_avatar,omitempty"`
+}
+
+// PublicationDocument is a document summary returned by
+// LongformAPI.PublicationDocuments.
+type PublicationDocument struct {
+	URI           string   `json:"uri"`
+	Title         string   `json:"title,omitempty"`
+	Description   string   `json:"description,omitempty"`
+	Path          string   `json:"path,omitempty"`
+	CoverImageURL string   `json:"cover_image_url,omitempty"`
+	PublishedAt   string   `json:"published_at,omitempty"`
+	Tags          []string `json:"tags,omitempty"`
 }
 
 // ProfileLink is a link on the user's profile.

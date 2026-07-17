@@ -25,6 +25,9 @@ import type {
   TopicsResult,
   ResolveResult,
   ConnectedApp,
+  Document,
+  Publication,
+  PublicationDocumentEntry,
 } from './types';
 
 export * from './types';
@@ -108,6 +111,7 @@ export class SurfClient {
   public readonly preferences: PreferencesAPI;
   public readonly customFeeds: CustomFeedsAPI;
   public readonly media: MediaAPI;
+  public readonly longform: LongformAPI;
   public readonly diagnostics: DiagnosticsAPI;
 
   constructor(options: SurfClientOptions) {
@@ -130,12 +134,13 @@ export class SurfClient {
     this.preferences = new PreferencesAPI(this);
     this.customFeeds = new CustomFeedsAPI(this);
     this.media = new MediaAPI(this);
+    this.longform = new LongformAPI(this);
     this.diagnostics = new DiagnosticsAPI(this);
   }
 
   /** @internal */
   async _request<T = any>(method: string, path: string, opts?: {
-    params?: Record<string, string | number | boolean | undefined>;
+    params?: Record<string, string | number | boolean | Array<string | number> | undefined>;
     json?: unknown;
     raw?: boolean;
     /** When true, `path` is treated as a full URL (no base/prefix prepended). */
@@ -145,7 +150,13 @@ export class SurfClient {
     if (opts?.params) {
       const qs = new URLSearchParams();
       for (const [k, v] of Object.entries(opts.params)) {
-        if (v !== undefined && v !== null) qs.set(k, String(v));
+        if (v === undefined || v === null) continue;
+        // Arrays become repeated params (e.g. tags=a&tags=b).
+        if (Array.isArray(v)) {
+          for (const item of v) qs.append(k, String(item));
+        } else {
+          qs.set(k, String(v));
+        }
       }
       const s = qs.toString();
       if (s) url += `?${s}`;
@@ -418,6 +429,10 @@ class SearchAPI {
   }
   accounts(q: string, limit = 20) { return this.search(q, 'accounts', limit); }
   podcasts(q: string, limit = 20) { return this.search(q, 'podcasts', limit); }
+  /** Search longform publications (standard.site / Leaflet). Requires read:search scope. */
+  publications(q: string, count = 20, opts?: { from?: number }): Promise<Publication[]> {
+    return this.c._get('/search/publications', { q, count, from: opts?.from });
+  }
   discover(type: 'recommended' | 'similar' | 'interests' = 'recommended', opts?: { surf_id?: string; limit?: number }) {
     return this.c._get('/search/discover', { type, ...opts });
   }
@@ -760,6 +775,70 @@ class MediaAPI {
       }
     }
     throw new SurfAPIError('Image generation timed out', 504);
+  }
+}
+
+// ==========================================================================
+// Longform
+// ==========================================================================
+
+/**
+ * Longform documents & publications (standard.site / Leaflet).
+ *
+ * Documents and publications are addressed by AT-URI (e.g.
+ * `at://did:plc:x/site.standard.document/3k2a`). Pass the raw AT-URI — the
+ * SDK percent-encodes it into the path for you. Read endpoints require the
+ * `read:feeds` scope; {@link searchPublications} requires `read:search`.
+ *
+ * @example
+ * ```ts
+ * const doc = await client.longform.getDocument('at://did:plc:x/site.standard.document/3k2a');
+ * console.log(doc.title, doc.content_html);
+ *
+ * const pubs = await client.longform.searchPublications('urbanism');
+ * const entries = await client.longform.listDocuments(pubs[0].uri, { count: 10 });
+ * ```
+ */
+class LongformAPI {
+  constructor(private c: SurfClient) {}
+
+  /**
+   * Fetch a longform document by AT-URI.
+   *
+   * @param uri     Document AT-URI (raw; encoded internally)
+   * @param options `format: 'html'` (default) returns rendered `content_html`;
+   *                `'blocks'` returns the raw block `pages` instead.
+   */
+  getDocument(uri: string, options?: { format?: 'html' | 'blocks' }): Promise<Document> {
+    return this.c._get(`/documents/${encodeURIComponent(uri)}`, { format: options?.format });
+  }
+
+  /** Fetch a publication by AT-URI (raw; encoded internally). */
+  getPublication(uri: string): Promise<Publication> {
+    return this.c._get(`/publications/${encodeURIComponent(uri)}`);
+  }
+
+  /**
+   * List a publication's documents, newest first.
+   *
+   * @param uri     Publication AT-URI (raw; encoded internally)
+   * @param options `tags` filters to matching documents (repeated query param);
+   *                `count` page size (default 20, max 100); `from` offset (default 0).
+   */
+  listDocuments(
+    uri: string,
+    options?: { tags?: string[]; count?: number; from?: number },
+  ): Promise<PublicationDocumentEntry[]> {
+    return this.c._get(`/publications/${encodeURIComponent(uri)}/documents`, {
+      tags: options?.tags,
+      count: options?.count,
+      from: options?.from,
+    });
+  }
+
+  /** Search publications by name/description. Requires read:search scope. */
+  searchPublications(q: string, options?: { count?: number; from?: number }): Promise<Publication[]> {
+    return this.c._get('/search/publications', { q, count: options?.count, from: options?.from });
   }
 }
 

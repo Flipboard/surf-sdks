@@ -37,7 +37,8 @@ trending = client.feeds.get_posts("surf/trending/dynamic", limit=10)
 ## Features
 
 - **Feeds**: Read feeds, posts, trending content, topics
-- **Search**: Search feeds, posts, accounts, Bluesky users, podcasts, RSS
+- **Search**: Search feeds, posts, accounts, Bluesky users, podcasts, RSS, publications
+- **Longform**: standard.site / Leaflet documents & publications
 - **AI Search**: Natural language queries via NLWeb
 - **Audio**: Radio stations, daily briefings, transcripts, quizzes
 - **Custom Feeds**: Create, update, delete, clone, publish custom feeds
@@ -90,6 +91,30 @@ theme = FeedTheme(
 )
 feed = client.custom_feeds.create("Branded Feed", theme=theme)
 ```
+
+## Longform (standard.site / Leaflet)
+
+Documents and publications are addressed by AT-URI — pass the raw URI, the SDK
+percent-encodes it for you.
+
+```python
+# Fetch a document (HTML by default; format="blocks" for structured pages)
+doc = client.longform.document("at://did:plc:x/site.standard.document/3k2a")
+print(doc["title"], doc["content_html"])
+
+# Fetch a publication
+pub = client.longform.publication("at://did:plc:x/site.standard.publication/self")
+
+# List a publication's documents (offset maps to the API's `from` param)
+docs = client.longform.publication_documents(pub["uri"], tags=["essays"], count=50)
+
+# Search publications (also available as client.search.publications)
+pubs = client.longform.search_publications("climate")
+```
+
+Posts in feed and search responses may include an optional `document` summary
+(`title`, `description`, `cover_image_url`, `tags`, `publication_uri`) when they
+link to a longform document.
 
 ## Audio
 

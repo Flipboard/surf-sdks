@@ -92,6 +92,7 @@ public class SurfClient {
     public final PreferencesApi preferences;
     public final CustomFeedsApi customFeeds;
     public final MediaApi media;
+    public final LongformApi longform;
     public final DiagnosticsApi diagnostics;
 
     /** Create a client with the default base URL and a 30-second timeout. */
@@ -148,6 +149,7 @@ public class SurfClient {
         this.preferences = new PreferencesApi(this);
         this.customFeeds = new CustomFeedsApi(this);
         this.media = new MediaApi(this);
+        this.longform = new LongformApi(this);
         this.diagnostics = new DiagnosticsApi(this);
     }
 
@@ -600,14 +602,27 @@ public class SurfClient {
             if (value == null) {
                 continue; // mirrors Python's _clean(): drop None values
             }
-            if (sb.length() > 0) {
-                sb.append('&');
+            if (value instanceof Iterable<?> items) {
+                // Repeatable query param (e.g. longform's `tags`): repeat the key per item.
+                for (Object item : items) {
+                    if (item != null) {
+                        appendQueryParam(sb, entry.getKey(), item);
+                    }
+                }
+            } else {
+                appendQueryParam(sb, entry.getKey(), value);
             }
-            sb.append(URLEncoder.encode(entry.getKey(), StandardCharsets.UTF_8));
-            sb.append('=');
-            sb.append(URLEncoder.encode(String.valueOf(value), StandardCharsets.UTF_8));
         }
         return sb.toString();
+    }
+
+    private static void appendQueryParam(StringBuilder sb, String key, Object value) {
+        if (sb.length() > 0) {
+            sb.append('&');
+        }
+        sb.append(URLEncoder.encode(key, StandardCharsets.UTF_8));
+        sb.append('=');
+        sb.append(URLEncoder.encode(String.valueOf(value), StandardCharsets.UTF_8));
     }
 
     private void checkErrors(int status, HttpHeaders headers, byte[] body) {

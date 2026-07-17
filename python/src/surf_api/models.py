@@ -128,6 +128,28 @@ class MediaAttachment:
 
 
 @dataclass
+class DocumentSummary:
+    """Summary of a longform document (standard.site / Leaflet) attached to a post."""
+    title: Optional[str] = None
+    description: Optional[str] = None
+    cover_image_url: Optional[str] = None
+    tags: Optional[List[str]] = None
+    publication_uri: Optional[str] = None
+
+    @classmethod
+    def from_dict(cls, d: Optional[dict]) -> Optional[DocumentSummary]:
+        if not d:
+            return None
+        return cls(
+            title=d.get("title"),
+            description=d.get("description"),
+            cover_image_url=d.get("cover_image_url"),
+            tags=d.get("tags"),
+            publication_uri=d.get("publication_uri"),
+        )
+
+
+@dataclass
 class Post:
     """A post/status from the Surf API (Mastodon-compatible)."""
     id: str = ""
@@ -154,6 +176,7 @@ class Post:
     podcast: Optional[bool] = None
     paywall: Optional[bool] = None
     orientation: Optional[str] = None
+    document: Optional[DocumentSummary] = None
 
     @classmethod
     def from_dict(cls, d: Optional[dict]) -> Optional[Post]:
@@ -187,6 +210,7 @@ class Post:
             podcast=d.get("podcast"),
             paywall=d.get("paywall"),
             orientation=d.get("orientation"),
+            document=DocumentSummary.from_dict(d.get("document")),
         )
 
     @classmethod

@@ -102,6 +102,7 @@ class SurfClient:
         self.preferences = _PreferencesAPI(self)
         self.custom_feeds = _CustomFeedsAPI(self)
         self.media = _MediaAPI(self)
+        self.longform = _LongformAPI(self)
         self.diagnostics = _DiagnosticsAPI(self)
 
     def _url(self, path: str) -> str:
@@ -483,11 +484,82 @@ class _SearchAPI:
         """Search for podcasts."""
         return self.search(query, type="podcasts", limit=limit)
 
+    def publications(self, q: str, count: int = 20, offset: int = 0) -> list:
+        """Search for longform publications (standard.site / Leaflet).
+
+        Returns a list of publication dicts (uri, name, description, icon_url,
+        publisher handle/avatar). ``offset`` maps to the API's ``from`` query
+        parameter (``from`` is reserved in Python).
+        """
+        return self._c._get("/search/publications", {"q": q, "count": count, "from": offset})
+
     def discover(self, type: str = "recommended", surf_id: str = None, limit: int = 20) -> dict:
         """Discover feeds. type: recommended, similar, interests."""
         return self._c._get("/search/discover", {
             "type": type, "surf_id": surf_id, "limit": limit,
         })
+
+
+# ==========================================================================
+# Longform (standard.site / Leaflet documents & publications)
+# ==========================================================================
+
+class _LongformAPI:
+    """Longform documents & publications — standard.site / Leaflet.
+
+    Document and publication reads require the ``read:feeds`` scope;
+    :meth:`search_publications` requires ``read:search``.
+
+    Documents and publications are addressed by AT-URI (e.g.
+    ``at://did:plc:x/site.standard.document/3k2a``). Pass the raw AT-URI —
+    the SDK percent-encodes it into the path automatically.
+    """
+
+    def __init__(self, client: SurfClient):
+        self._c = client
+
+    def document(self, uri: str, format: str = None) -> dict:
+        """Get a longform document by AT-URI.
+
+        Args:
+            uri: Document AT-URI (raw; encoded internally).
+            format: ``'html'`` (default, ``content_html``) or ``'blocks'``
+                (``pages``). Omitted from the request when None.
+        """
+        return self._c._get(f"/documents/{quote(uri, safe='')}", {"format": format})
+
+    def publication(self, uri: str) -> dict:
+        """Get a publication by AT-URI.
+
+        Args:
+            uri: Publication AT-URI (raw; encoded internally).
+        """
+        return self._c._get(f"/publications/{quote(uri, safe='')}")
+
+    def publication_documents(self, uri: str, tags: Optional[List[str]] = None,
+                              count: int = 20, offset: int = 0) -> list:
+        """List a publication's documents (newest first).
+
+        Args:
+            uri: Publication AT-URI (raw; encoded internally).
+            tags: Optional list of tags to filter by (repeatable param).
+            count: Page size (default 20, max 100).
+            offset: Result offset; maps to the API's ``from`` query parameter
+                (``from`` is reserved in Python).
+        """
+        return self._c._get(f"/publications/{quote(uri, safe='')}/documents", {
+            "tags": tags, "count": count, "from": offset,
+        })
+
+    def search_publications(self, q: str, count: int = 20, offset: int = 0) -> list:
+        """Search for publications (read:search scope).
+
+        Args:
+            q: Search query (required).
+            count: Page size (default 20, max 100).
+            offset: Result offset; maps to the API's ``from`` query parameter.
+        """
+        return self._c._get("/search/publications", {"q": q, "count": count, "from": offset})
 
 
 # ==========================================================================
