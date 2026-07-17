@@ -52,6 +52,7 @@ type Client struct {
 	Preferences   *PreferencesAPI
 	CustomFeeds   *CustomFeedsAPI
 	Media         *MediaAPI
+	Longform      *LongformAPI
 	Diagnostics   *DiagnosticsAPI
 
 	// RateLimit is updated after each request.
@@ -111,6 +112,7 @@ func NewClient(apiKey string, opts ...ClientOption) *Client {
 	c.Preferences = &PreferencesAPI{c: c}
 	c.CustomFeeds = &CustomFeedsAPI{c: c}
 	c.Media = &MediaAPI{c: c}
+	c.Longform = &LongformAPI{c: c}
 	c.Diagnostics = &DiagnosticsAPI{c: c}
 	return c
 }
@@ -711,6 +713,13 @@ func (a *SearchAPI) Posts(q string, limit int, opts ...PostSearchOption) (json.R
 	return a.c.get("/search/posts", v)
 }
 
+// Publications searches longform publications (requires the read:search
+// scope). It delegates to Longform.SearchPublications; supported options are
+// WithCount and WithFrom.
+func (a *SearchAPI) Publications(q string, opts ...LongformOption) (json.RawMessage, error) {
+	return a.c.Longform.SearchPublications(q, opts...)
+}
+
 func (a *SearchAPI) Accounts(q string, limit int) (json.RawMessage, error) {
 	return a.Search(q, "accounts", limit)
 }
@@ -1208,6 +1217,134 @@ func (a *MediaAPI) GenerateImageAndWait(prompt string, skipRefiner bool, pollInt
 		}
 	}
 	return "", fmt.Errorf("surf: image generation timed out")
+}
+
+// =========================================================================
+// Longform (standard.site / Leaflet documents & publications)
+// =========================================================================
+
+// LongformAPI provides access to longform documents and publications
+// (standard.site / Leaflet). Document and publication ids are AT-URIs
+// (e.g. "at://did:plc:x/site.standard.document/3k2a"); pass them raw — the
+// SDK percent-encodes them as a single path segment internally.
+type LongformAPI struct{ c *Client }
+
+// escapeATURI percent-encodes an AT-URI so it travels as a single path
+// segment. Uses encodeURIComponent semantics: both ':' and '/' are encoded
+// (url.PathEscape leaves ':' bare, so it is not strict enough here). Spaces
+// are encoded as %20, not '+'.
+func escapeATURI(uri string) string {
+	return strings.ReplaceAll(url.QueryEscape(uri), "+", "%20")
+}
+
+// longformParams holds the optional parameters set via LongformOption.
+type longformParams struct {
+	format  string
+	tags    []string
+	count   int
+	from    int
+	fromSet bool
+}
+
+// LongformOption configures an optional parameter of a Longform method.
+// Each method reads only the options it supports (documented per method);
+// unsupported options are ignored.
+type LongformOption func(*longformParams)
+
+// WithFormat sets the document content format: "html" (server default) or
+// "blocks". When unset, the format parameter is omitted from the request.
+// Used by Document.
+func WithFormat(format string) LongformOption {
+	return func(p *longformParams) { p.format = format }
+}
+
+// WithTags filters publication documents to those carrying any of the given
+// tags (sent as a repeatable "tags" query parameter). Used by
+// PublicationDocuments.
+func WithTags(tags ...string) LongformOption {
+	return func(p *longformParams) { p.tags = append(p.tags, tags...) }
+}
+
+// WithCount sets the page size (server default 20, max 100). Used by
+// PublicationDocuments and SearchPublications.
+func WithCount(count int) LongformOption {
+	return func(p *longformParams) { p.count = count }
+}
+
+// WithFrom sets the result offset for pagination (server default 0). Used by
+// PublicationDocuments and SearchPublications.
+func WithFrom(from int) LongformOption {
+	return func(p *longformParams) { p.from = from; p.fromSet = true }
+}
+
+func applyLongformOptions(opts []LongformOption) longformParams {
+	var p longformParams
+	for _, o := range opts {
+		o(&p)
+	}
+	return p
+}
+
+// values renders the shared count/from/tags options into query parameters.
+func (p longformParams) values() url.Values {
+	v := p.pagingValues()
+	for _, tag := range p.tags {
+		v.Add("tags", tag)
+	}
+	return v
+}
+
+// pagingValues renders only the count/from options, for endpoints that do not
+// support tag filtering (so an ignored WithTags never reaches the wire).
+func (p longformParams) pagingValues() url.Values {
+	v := url.Values{}
+	if p.count > 0 {
+		v.Set("count", strconv.Itoa(p.count))
+	}
+	if p.fromSet {
+		v.Set("from", strconv.Itoa(p.from))
+	}
+	return v
+}
+
+// Document fetches a longform document by its AT-URI (requires the
+// read:feeds scope). Pass the raw AT-URI; it is percent-encoded internally.
+// Supported option: WithFormat ("html", the server default, or "blocks").
+// The response decodes into the Document model.
+func (a *LongformAPI) Document(uri string, opts ...LongformOption) (json.RawMessage, error) {
+	p := applyLongformOptions(opts)
+	var params url.Values
+	if p.format != "" {
+		params = url.Values{"format": {p.format}}
+	}
+	return a.c.get("/documents/"+escapeATURI(uri), params)
+}
+
+// Publication fetches a publication by its AT-URI (requires the read:feeds
+// scope). Pass the raw AT-URI; it is percent-encoded internally. The response
+// decodes into the Publication model.
+func (a *LongformAPI) Publication(uri string) (json.RawMessage, error) {
+	return a.c.get("/publications/"+escapeATURI(uri), nil)
+}
+
+// PublicationDocuments lists the documents of a publication by its AT-URI
+// (requires the read:feeds scope). Supported options: WithTags (repeatable
+// tag filter), WithCount (default 20, max 100), and WithFrom (offset,
+// default 0). The response is a JSON array that decodes into
+// []PublicationDocument.
+func (a *LongformAPI) PublicationDocuments(uri string, opts ...LongformOption) (json.RawMessage, error) {
+	p := applyLongformOptions(opts)
+	return a.c.get("/publications/"+escapeATURI(uri)+"/documents", p.values())
+}
+
+// SearchPublications searches publications by query (requires the
+// read:search scope). Supported options: WithCount and WithFrom. The response
+// is a JSON array that decodes into []Publication.
+func (a *LongformAPI) SearchPublications(q string, opts ...LongformOption) (json.RawMessage, error) {
+	p := applyLongformOptions(opts)
+	v := p.pagingValues()
+	v.Set("q", q)
+	return a.c.get("/search/publications", v)
 }
 
 // =========================================================================

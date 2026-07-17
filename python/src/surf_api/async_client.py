@@ -101,6 +101,7 @@ class AsyncSurfClient:
         self.preferences = _AsyncPreferencesAPI(self)
         self.custom_feeds = _AsyncCustomFeedsAPI(self)
         self.media = _AsyncMediaAPI(self)
+        self.longform = _AsyncLongformAPI(self)
         self.diagnostics = _AsyncDiagnosticsAPI(self)
 
     async def __aenter__(self):
@@ -397,10 +398,48 @@ class _AsyncSearchAPI:
     async def podcasts(self, query: str, limit: int = 20) -> dict:
         return await self.search(query, type="podcasts", limit=limit)
 
+    async def publications(self, q: str, count: int = 20, offset: int = 0) -> list:
+        """Search for longform publications. ``offset`` maps to the API's ``from`` param."""
+        return await self._c._get("/search/publications", {"q": q, "count": count, "from": offset})
+
     async def discover(self, type: str = "recommended", surf_id: str = None, limit: int = 20) -> dict:
         return await self._c._get("/search/discover", {
             "type": type, "surf_id": surf_id, "limit": limit,
         })
+
+
+# ==========================================================================
+# Longform (standard.site / Leaflet documents & publications)
+# ==========================================================================
+
+class _AsyncLongformAPI:
+    """Longform documents & publications — standard.site / Leaflet.
+
+    Mirrors :class:`surf_api.client._LongformAPI`. Pass raw AT-URIs — the SDK
+    percent-encodes them into the path automatically.
+    """
+
+    def __init__(self, c: AsyncSurfClient):
+        self._c = c
+
+    async def document(self, uri: str, format: str = None) -> dict:
+        """Get a longform document by AT-URI. format: 'html' (default) or 'blocks'."""
+        return await self._c._get(f"/documents/{quote(uri, safe='')}", {"format": format})
+
+    async def publication(self, uri: str) -> dict:
+        """Get a publication by AT-URI."""
+        return await self._c._get(f"/publications/{quote(uri, safe='')}")
+
+    async def publication_documents(self, uri: str, tags: Optional[list] = None,
+                                    count: int = 20, offset: int = 0) -> list:
+        """List a publication's documents. ``offset`` maps to the API's ``from`` param."""
+        return await self._c._get(f"/publications/{quote(uri, safe='')}/documents", {
+            "tags": tags, "count": count, "from": offset,
+        })
+
+    async def search_publications(self, q: str, count: int = 20, offset: int = 0) -> list:
+        """Search for publications (read:search scope). ``offset`` maps to ``from``."""
+        return await self._c._get("/search/publications", {"q": q, "count": count, "from": offset})
 
 
 # ==========================================================================

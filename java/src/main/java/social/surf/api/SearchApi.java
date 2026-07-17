@@ -1,5 +1,8 @@
 package social.surf.api;
 
+import social.surf.api.model.Publication;
+
+import java.util.List;
 import java.util.Map;
 
 import static social.surf.api.SurfClient.map;
@@ -93,6 +96,30 @@ public class SearchApi {
 
     public Map<String, Object> podcasts(String query, int limit) {
         return search(query, "podcasts", limit);
+    }
+
+    /** Search longform publications (standard.site / Leaflet), default count 20. */
+    public List<Publication> publications(String query) {
+        return publications(query, 20, 0);
+    }
+
+    /** Search longform publications with a page size. */
+    public List<Publication> publications(String query, int count) {
+        return publications(query, count, 0);
+    }
+
+    /**
+     * Search longform publications (standard.site / Leaflet) with full options.
+     * Same endpoint as {@link LongformApi#searchPublications(String, int, int)}.
+     *
+     * @param query search query (required)
+     * @param count page size (default 20, max 100)
+     * @param from  result offset (default 0)
+     */
+    public List<Publication> publications(String query, int count, int from) {
+        return c.getListOf("/search/publications",
+                map("q", query, "count", count, "from", from),
+                Publication.class);
     }
 
     /** Discover feeds (default type {@code recommended}, limit 20). */
