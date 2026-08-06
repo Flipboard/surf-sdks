@@ -495,6 +495,7 @@ type PostsOptions struct {
 	Cursor   string
 	Sort     string
 	Services string // filter by network: "mastodon", "bluesky", "rss"
+	Since    string // recency cutoff for a digest: a rolling duration ("24h", "7d", "30m", "90s", or bare seconds) or an absolute ISO 8601 timestamp; only posts at/after the cutoff are returned
 }
 
 func (o *PostsOptions) params(surfId string) url.Values {
@@ -511,6 +512,9 @@ func (o *PostsOptions) params(surfId string) url.Values {
 		}
 		if o.Services != "" {
 			v.Set("services", o.Services)
+		}
+		if o.Since != "" {
+			v.Set("since", o.Since)
 		}
 	}
 	return v
