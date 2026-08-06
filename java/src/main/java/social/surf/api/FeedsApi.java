@@ -33,8 +33,18 @@ public class FeedsApi {
 
     /** Get posts from a feed with full options. Null optional args are omitted. */
     public List<Map<String, Object>> getPosts(String surfId, int limit, String cursor, String sort, String services) {
+        return getPosts(surfId, limit, cursor, sort, services, null);
+    }
+
+    /**
+     * Get posts from a feed with full options, including a recency window.
+     * {@code since} is a digest cutoff — a rolling duration ("24h", "7d", "30m", "90s", or a
+     * bare number of seconds) or an absolute ISO 8601 timestamp; only posts created at or after
+     * the cutoff are returned. Null optional args are omitted.
+     */
+    public List<Map<String, Object>> getPosts(String surfId, int limit, String cursor, String sort, String services, String since) {
         return c.getMapList("/feed/posts", map(
-                "surf_id", surfId, "limit", limit, "cursor", cursor, "sort", sort, "services", services));
+                "surf_id", surfId, "limit", limit, "cursor", cursor, "sort", sort, "services", services, "since", since));
     }
 
     /** Get a single post by ID. */

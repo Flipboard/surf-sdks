@@ -353,7 +353,12 @@ class FeedsAPI {
   constructor(private c: SurfClient) {}
 
   get(surf_id: string): Promise<FeedMeta> { return this.c._get('/feed', { surf_id }); }
-  getPosts(surf_id: string, opts?: { limit?: number; cursor?: string; sort?: string; services?: string }): Promise<Post[]> {
+  /**
+   * Get posts from a feed. `since` is a recency cutoff for a digest — a rolling duration
+   * ('24h', '7d', '30m', '90s', or a bare number of seconds) or an absolute ISO 8601
+   * timestamp; only posts created at or after the cutoff are returned.
+   */
+  getPosts(surf_id: string, opts?: { limit?: number; cursor?: string; sort?: string; services?: string; since?: string }): Promise<Post[]> {
     return this.c._get('/feed/posts', { surf_id, ...opts });
   }
   getPost(id: string, thread = false) {

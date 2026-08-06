@@ -263,11 +263,16 @@ class _FeedsAPI:
         return self._c._get("/feed", {"surf_id": surf_id})
 
     def get_posts(self, surf_id: str, limit: int = 20, cursor: str = None,
-                  sort: str = None, services: str = None) -> dict:
-        """Get posts from a feed."""
+                  sort: str = None, services: str = None, since: str = None) -> dict:
+        """Get posts from a feed.
+
+        `since`: recency cutoff for a digest — a rolling duration ('24h', '7d', '30m', '90s',
+        or a bare number of seconds) or an absolute ISO 8601 timestamp; only posts created at
+        or after the cutoff are returned.
+        """
         return self._c._get("/feed/posts", {
             "surf_id": surf_id, "limit": limit, "cursor": cursor,
-            "sort": sort, "services": services,
+            "sort": sort, "services": services, "since": since,
         })
 
     def iter_posts(self, surf_id: str, limit: int = None, page_size: int = 40,

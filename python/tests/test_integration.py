@@ -65,6 +65,11 @@ class TestFeeds:
         posts = retry_on_rate_limit(lambda: client.feeds.get_posts("surf/topic/technology", limit=3, sort="recent"))
         assert isinstance(posts, list)
 
+    def test_get_posts_with_since(self, client):
+        posts = retry_on_rate_limit(lambda: client.feeds.get_posts("surf/topic/technology", limit=5, since="7d"))
+        assert isinstance(posts, list)
+        assert len(posts) <= 5
+
     def test_iter_posts_yields_items_up_to_limit(self, client):
         posts = retry_on_rate_limit(
             lambda: list(client.feeds.iter_posts("surf/topic/technology", limit=5, page_size=3))
