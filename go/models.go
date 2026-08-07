@@ -15,6 +15,8 @@ type Post struct {
 	Sensitive        bool              `json:"sensitive"`
 	SpoilerText      string            `json:"spoiler_text,omitempty"`
 	Language         *string           `json:"language,omitempty"`
+	InReplyToID      *string           `json:"in_reply_to_id,omitempty"`
+	InReplyToAccountID *string         `json:"in_reply_to_account_id,omitempty"`
 	Account          *PostAccount      `json:"account,omitempty"`
 	Card             *Card             `json:"card,omitempty"`
 	MediaAttachments []MediaAttachment `json:"media_attachments,omitempty"`

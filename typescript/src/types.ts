@@ -126,6 +126,10 @@ export interface Post {
   sensitive: boolean;
   spoiler_text?: string;
   language?: string;
+  /** Id of the post this is a reply to; absent when not a reply. */
+  in_reply_to_id?: string;
+  /** Account id (DID for Bluesky) of the author being replied to; compare to account.id to tell a self-thread from a reply into someone else's thread. Absent when not a reply. */
+  in_reply_to_account_id?: string;
   account?: PostAccount;
   card?: Card;
   media_attachments?: MediaAttachment[];

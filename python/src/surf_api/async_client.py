@@ -376,7 +376,8 @@ class _AsyncSearchAPI:
         self._c = c
 
     async def search(self, query: str, type: str = "feeds", limit: int = 20, sort: str = None,
-                     since: str = None, automated: bool = None) -> dict:
+                     since: str = None, automated: bool = None, safety: str = None,
+                     exclude_replies: bool = None) -> dict:
         path = self._PATHS.get(type)
         if path is None:
             raise ValueError(f"unsupported search type: {type!r}")
@@ -388,15 +389,21 @@ class _AsyncSearchAPI:
                 params["since"] = since
             if automated is not None:
                 params["automated"] = "true" if automated else "false"
+            if safety:
+                params["safety"] = safety
+            if exclude_replies is not None:
+                params["exclude_replies"] = "true" if exclude_replies else "false"
         return await self._c._get(path, params)
 
     async def feeds(self, query: str, limit: int = 20) -> dict:
         return await self.search(query, type="feeds", limit=limit)
 
     async def posts(self, query: str, limit: int = 20, sort: str = None,
-                    since: str = None, automated: bool = None) -> dict:
+                    since: str = None, automated: bool = None, safety: str = None,
+                    exclude_replies: bool = None) -> dict:
         return await self.search(query, type="posts", limit=limit, sort=sort,
-                                 since=since, automated=automated)
+                                 since=since, automated=automated, safety=safety,
+                                 exclude_replies=exclude_replies)
 
     async def accounts(self, query: str, limit: int = 20) -> dict:
         return await self.search(query, type="accounts", limit=limit)

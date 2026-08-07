@@ -447,7 +447,8 @@ class _SearchAPI:
         self._c = client
 
     def search(self, query: str, type: str = "feeds", limit: int = 20, sort: str = None,
-               since: str = None, automated: bool = None) -> dict:
+               since: str = None, automated: bool = None, safety: str = None,
+               exclude_replies: bool = None) -> dict:
         """Search. type: feeds, posts, accounts, podcasts, rss.
 
         Post-only options (ignored for other types):
@@ -455,6 +456,10 @@ class _SearchAPI:
           since: recency window, e.g. '24h', '7d', '30m', '90s'. Pair with sort='top'
                  for a "recent AND engaged" (trending) result.
           automated: False drops bot/bridge-account posts server-side.
+          safety: 'sfw' drops posts flagged NSFW at ingest, applied server-side before
+                  the limit so you get a full page of safe posts. 'all' returns everything.
+          exclude_replies: True drops replies into other threads, keeping standalone and
+                  quote posts.
         """
         path = self._PATHS.get(type)
         if path is None:
@@ -467,6 +472,10 @@ class _SearchAPI:
                 params["since"] = since
             if automated is not None:
                 params["automated"] = "true" if automated else "false"
+            if safety:
+                params["safety"] = safety
+            if exclude_replies is not None:
+                params["exclude_replies"] = "true" if exclude_replies else "false"
         return self._c._get(path, params)
 
     def feeds(self, query: str, limit: int = 20) -> dict:
@@ -474,12 +483,16 @@ class _SearchAPI:
         return self.search(query, type="feeds", limit=limit)
 
     def posts(self, query: str, limit: int = 20, sort: str = None,
-              since: str = None, automated: bool = None) -> dict:
+              since: str = None, automated: bool = None, safety: str = None,
+              exclude_replies: bool = None) -> dict:
         """Search for posts. `sort`: 'recent' newest-first, 'top' relevance/engagement.
         `since`: recency window ('24h', '7d', …); pair with sort='top' for trending.
-        `automated`: False drops bot/bridge-account posts."""
+        `automated`: False drops bot/bridge-account posts.
+        `safety`: 'sfw' drops NSFW-flagged posts server-side; 'all' returns everything.
+        `exclude_replies`: True drops replies into other threads."""
         return self.search(query, type="posts", limit=limit, sort=sort,
-                           since=since, automated=automated)
+                           since=since, automated=automated, safety=safety,
+                           exclude_replies=exclude_replies)
 
     def accounts(self, query: str, limit: int = 20) -> dict:
         """Search for accounts."""
