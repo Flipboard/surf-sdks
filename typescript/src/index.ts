@@ -406,6 +406,10 @@ interface PostSearchOptions {
   since?: string;
   /** false drops bot/bridge-account posts server-side. */
   automated?: boolean;
+  /** 'sfw' drops posts flagged NSFW at ingest server-side (before the limit); 'all' returns everything. */
+  safety?: 'sfw' | 'all';
+  /** true drops replies into other threads, keeping standalone and quote posts. */
+  exclude_replies?: boolean;
 }
 
 /** Search across feeds, posts, accounts, and podcasts. Each type maps to its own endpoint. */
@@ -430,6 +434,8 @@ class SearchAPI {
     return this.c._get(SearchAPI.PATHS.posts, {
       q, limit, sort: opts?.sort, since: opts?.since,
       automated: opts?.automated === undefined ? undefined : String(opts.automated),
+      safety: opts?.safety,
+      exclude_replies: opts?.exclude_replies === undefined ? undefined : String(opts.exclude_replies),
     });
   }
   accounts(q: string, limit = 20) { return this.search(q, 'accounts', limit); }

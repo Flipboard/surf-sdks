@@ -163,6 +163,8 @@ class Post:
     sensitive: bool = False
     spoiler_text: str = ""
     language: Optional[str] = None
+    in_reply_to_id: Optional[str] = None
+    in_reply_to_account_id: Optional[str] = None
     account: Optional[PostAccount] = None
     card: Optional[Card] = None
     media_attachments: List[MediaAttachment] = field(default_factory=list)
@@ -195,6 +197,8 @@ class Post:
             sensitive=d.get("sensitive", False),
             spoiler_text=d.get("spoiler_text", ""),
             language=d.get("language"),
+            in_reply_to_id=d.get("in_reply_to_id"),
+            in_reply_to_account_id=d.get("in_reply_to_account_id"),
             account=PostAccount.from_dict(d.get("account")),
             card=Card.from_dict(d.get("card")),
             media_attachments=[

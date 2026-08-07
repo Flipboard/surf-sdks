@@ -74,12 +74,27 @@ public class SearchApi {
      * drops bot/bridge-account posts. Any argument may be {@code null} to omit it.
      */
     public Map<String, Object> posts(String query, int limit, String sort, String since, Boolean automated) {
+        return posts(query, limit, sort, since, automated, null, null);
+    }
+
+    /**
+     * Search posts with the full set of post-only options. In addition to {@code sort},
+     * {@code since}, and {@code automated} (see the shorter overload): {@code safety}
+     * "sfw" drops posts flagged NSFW at ingest server-side, applied before the limit so
+     * you get a full page of safe posts ("all" returns everything); {@code excludeReplies}
+     * {@code true} drops replies into other threads, keeping standalone and quote posts.
+     * Any argument may be {@code null} to omit it.
+     */
+    public Map<String, Object> posts(String query, int limit, String sort, String since, Boolean automated,
+                                     String safety, Boolean excludeReplies) {
         return c.get("/search/posts", map(
             "q", query,
             "limit", limit,
             "sort", sort,
             "since", since,
-            "automated", automated == null ? null : String.valueOf(automated)));
+            "automated", automated == null ? null : String.valueOf(automated),
+            "safety", safety,
+            "exclude_replies", excludeReplies == null ? null : String.valueOf(excludeReplies)));
     }
 
     public Map<String, Object> accounts(String query) {

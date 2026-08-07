@@ -4,29 +4,31 @@ import "encoding/json"
 
 // Post is a Mastodon-compatible status object returned by the Surf API.
 type Post struct {
-	ID               string            `json:"id"`
-	Content          string            `json:"content"`
-	CreatedAt        string            `json:"created_at"`
-	URL              string            `json:"url"`
-	FavouritesCount  int               `json:"favourites_count"`
-	ReblogsCount     int               `json:"reblogs_count"`
-	RepliesCount     int               `json:"replies_count"`
-	Visibility       string            `json:"visibility"`
-	Sensitive        bool              `json:"sensitive"`
-	SpoilerText      string            `json:"spoiler_text,omitempty"`
-	Language         *string           `json:"language,omitempty"`
-	Account          *PostAccount      `json:"account,omitempty"`
-	Card             *Card             `json:"card,omitempty"`
-	MediaAttachments []MediaAttachment `json:"media_attachments,omitempty"`
-	Reblog           *Post             `json:"reblog,omitempty"`
-	Quote            *Post             `json:"quote,omitempty"`
-	PostType         *string           `json:"post_type,omitempty"`
-	Topics           []string          `json:"topics,omitempty"`
-	Duration         *int              `json:"duration,omitempty"`
-	Podcast          *bool             `json:"podcast,omitempty"`
-	Paywall          *bool             `json:"paywall,omitempty"`
-	Orientation      *string           `json:"orientation,omitempty"`
-	Document         *PostDocument     `json:"document,omitempty"`
+	ID                 string            `json:"id"`
+	Content            string            `json:"content"`
+	CreatedAt          string            `json:"created_at"`
+	URL                string            `json:"url"`
+	FavouritesCount    int               `json:"favourites_count"`
+	ReblogsCount       int               `json:"reblogs_count"`
+	RepliesCount       int               `json:"replies_count"`
+	Visibility         string            `json:"visibility"`
+	Sensitive          bool              `json:"sensitive"`
+	SpoilerText        string            `json:"spoiler_text,omitempty"`
+	Language           *string           `json:"language,omitempty"`
+	InReplyToID        *string           `json:"in_reply_to_id,omitempty"`
+	InReplyToAccountID *string           `json:"in_reply_to_account_id,omitempty"`
+	Account            *PostAccount      `json:"account,omitempty"`
+	Card               *Card             `json:"card,omitempty"`
+	MediaAttachments   []MediaAttachment `json:"media_attachments,omitempty"`
+	Reblog             *Post             `json:"reblog,omitempty"`
+	Quote              *Post             `json:"quote,omitempty"`
+	PostType           *string           `json:"post_type,omitempty"`
+	Topics             []string          `json:"topics,omitempty"`
+	Duration           *int              `json:"duration,omitempty"`
+	Podcast            *bool             `json:"podcast,omitempty"`
+	Paywall            *bool             `json:"paywall,omitempty"`
+	Orientation        *string           `json:"orientation,omitempty"`
+	Document           *PostDocument     `json:"document,omitempty"`
 }
 
 // PostDocument is the optional longform-document summary attached to a Post

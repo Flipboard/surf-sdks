@@ -673,9 +673,11 @@ func (a *SearchAPI) Feeds(q string, limit int) (json.RawMessage, error) {
 
 // postSearchParams holds the post-only search options set via PostSearchOption.
 type postSearchParams struct {
-	sort      string
-	since     string
-	automated *bool
+	sort           string
+	since          string
+	automated      *bool
+	safety         string
+	excludeReplies *bool
 }
 
 // PostSearchOption configures an optional parameter of Posts.
@@ -697,8 +699,20 @@ func WithAutomated(automated bool) PostSearchOption {
 	return func(p *postSearchParams) { p.automated = &automated }
 }
 
-// Posts searches individual posts. Optional post-only params (sort, since, automated)
-// are supplied via PostSearchOption, e.g. Posts(q, 20, WithSort("top"), WithSince("24h")).
+// WithSafety sets the safety filter: "sfw" drops posts flagged NSFW at ingest server-side
+// (applied before the limit, so you get a full page of safe posts); "all" returns everything.
+func WithSafety(safety string) PostSearchOption {
+	return func(p *postSearchParams) { p.safety = safety }
+}
+
+// WithExcludeReplies, when true, drops replies into other threads, keeping standalone and quote posts.
+func WithExcludeReplies(excludeReplies bool) PostSearchOption {
+	return func(p *postSearchParams) { p.excludeReplies = &excludeReplies }
+}
+
+// Posts searches individual posts. Optional post-only params (sort, since, automated,
+// safety, excludeReplies) are supplied via PostSearchOption, e.g.
+// Posts(q, 20, WithSort("top"), WithSince("24h"), WithSafety("sfw")).
 func (a *SearchAPI) Posts(q string, limit int, opts ...PostSearchOption) (json.RawMessage, error) {
 	var p postSearchParams
 	for _, o := range opts {
@@ -713,6 +727,12 @@ func (a *SearchAPI) Posts(q string, limit int, opts ...PostSearchOption) (json.R
 	}
 	if p.automated != nil {
 		v.Set("automated", strconv.FormatBool(*p.automated))
+	}
+	if p.safety != "" {
+		v.Set("safety", p.safety)
+	}
+	if p.excludeReplies != nil {
+		v.Set("exclude_replies", strconv.FormatBool(*p.excludeReplies))
 	}
 	return a.c.get("/search/posts", v)
 }
