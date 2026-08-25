@@ -401,6 +401,10 @@ class _AsyncSearchAPI:
     async def posts(self, query: str, limit: int = 20, sort: str = None,
                     since: str = None, automated: bool = None, safety: str = None,
                     exclude_replies: bool = None) -> dict:
+        """Search for posts. `query` supports exact phrases in double quotes
+        ('"climate change"') and boolean operators AND/&& and OR/|| between terms
+        ('cats AND dogs'); the word forms are uppercase-only, plain keywords are
+        implicit AND. Options as in the sync client."""
         return await self.search(query, type="posts", limit=limit, sort=sort,
                                  since=since, automated=automated, safety=safety,
                                  exclude_replies=exclude_replies)

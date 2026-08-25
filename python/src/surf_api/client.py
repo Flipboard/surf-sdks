@@ -485,7 +485,10 @@ class _SearchAPI:
     def posts(self, query: str, limit: int = 20, sort: str = None,
               since: str = None, automated: bool = None, safety: str = None,
               exclude_replies: bool = None) -> dict:
-        """Search for posts. `sort`: 'recent' newest-first, 'top' relevance/engagement.
+        """Search for posts. `query` supports exact phrases in double quotes
+        ('"climate change"') and boolean operators AND/&& and OR/|| between terms
+        ('cats AND dogs'); the word forms are uppercase-only, plain keywords are
+        implicit AND. `sort`: 'recent' newest-first, 'top' relevance/engagement.
         `since`: recency window ('24h', '7d', …); pair with sort='top' for trending.
         `automated`: False drops bot/bridge-account posts.
         `safety`: 'sfw' drops NSFW-flagged posts server-side; 'all' returns everything.

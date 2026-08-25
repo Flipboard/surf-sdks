@@ -59,6 +59,12 @@ public class SearchApi {
         return search(query, "feeds", limit);
     }
 
+    /**
+     * Search posts. The query (all {@code posts} overloads) supports exact phrases in
+     * double quotes ({@code "climate change"}) and boolean operators {@code AND}/{@code &&}
+     * and {@code OR}/{@code ||} between terms ({@code cats AND dogs}); the word forms are
+     * uppercase-only, plain keywords are implicit AND.
+     */
     public Map<String, Object> posts(String query) {
         return search(query, "posts", 20);
     }

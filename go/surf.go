@@ -710,7 +710,10 @@ func WithExcludeReplies(excludeReplies bool) PostSearchOption {
 	return func(p *postSearchParams) { p.excludeReplies = &excludeReplies }
 }
 
-// Posts searches individual posts. Optional post-only params (sort, since, automated,
+// Posts searches individual posts. The query supports exact phrases in double
+// quotes (`"climate change"`) and boolean operators AND/&& and OR/|| between
+// terms (`cats AND dogs`); the word forms are uppercase-only, plain keywords
+// are implicit AND. Optional post-only params (sort, since, automated,
 // safety, excludeReplies) are supplied via PostSearchOption, e.g.
 // Posts(q, 20, WithSort("top"), WithSince("24h"), WithSafety("sfw")).
 func (a *SearchAPI) Posts(q string, limit int, opts ...PostSearchOption) (json.RawMessage, error) {

@@ -430,6 +430,12 @@ class SearchAPI {
     return this.c._get(path, { q, limit });
   }
   feeds(q: string, limit = 20) { return this.search(q, 'feeds', limit); }
+  /**
+   * Search posts. The query supports exact phrases in double quotes
+   * ('"climate change"') and boolean operators AND/&& and OR/|| between terms
+   * ('cats AND dogs'); the word forms are uppercase-only, plain keywords are
+   * implicit AND.
+   */
   posts(q: string, limit = 20, opts?: PostSearchOptions) {
     return this.c._get(SearchAPI.PATHS.posts, {
       q, limit, sort: opts?.sort, since: opts?.since,
