@@ -151,6 +151,32 @@ class AudioApiTest {
     }
 
     @Test
+    void getPodcastSponsorsForEpisodeUrlHashesTheUrl() {
+        client.audio.getPodcastSponsorsForEpisodeUrl(EPISODE_URL);
+        assertEquals("/v1/audio/sponsors", lastRawPath);
+        assertEquals("episode_url_hash=" + AudioApi.episodeUrlHash(EPISODE_URL)
+                + "&limit=20&offset=0", lastRawQuery);
+        assertFalse(lastRawQuery.contains("episode_url="), "raw episode_url is not sent");
+    }
+
+    @Test
+    void getPodcastSponsorsForEpisodeUrlForwardsLimitAndOffset() {
+        client.audio.getPodcastSponsorsForEpisodeUrl(EPISODE_URL, 50, 100);
+        assertEquals("episode_url_hash=" + AudioApi.episodeUrlHash(EPISODE_URL)
+                + "&limit=50&offset=100", lastRawQuery);
+    }
+
+    @Test
+    void getPodcastSponsorsForEpisodeUrlRequiresUrl() {
+        lastMethod = null;
+        assertThrows(IllegalArgumentException.class,
+                () -> client.audio.getPodcastSponsorsForEpisodeUrl(null));
+        assertThrows(IllegalArgumentException.class,
+                () -> client.audio.getPodcastSponsorsForEpisodeUrl("", 20, 0));
+        assertNull(lastMethod, "no request should be made");
+    }
+
+    @Test
     void getPodcastSponsorsCombinesCompanyAndEpisode() {
         String hash = AudioApi.episodeUrlHash(EPISODE_URL);
         client.audio.getPodcastSponsors("Squarespace", hash, FLYF_ID, 10, 5);

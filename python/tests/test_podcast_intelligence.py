@@ -411,3 +411,122 @@ class TestPhase4Models:
         assert PodcastTranslation.from_dict({}) is None
         assert PodcastTopicMatch.from_list([]) == []
         assert PodcastFactCheck.from_list({"no_key": []}) == []
+
+
+# ==========================================================================
+# Async client mirrors the sync surface
+# ==========================================================================
+
+class TestAsyncPodcastIntelligence:
+    @staticmethod
+    def _async_client_and_mock(json_body=None):
+        pytest.importorskip("httpx")
+        import asyncio
+        from unittest.mock import AsyncMock
+        from surf_api.async_client import AsyncSurfClient
+
+        c = AsyncSurfClient(api_key="k")
+        m = AsyncMock(return_value=_mk_resp(json_body=json_body))
+        c._client.request = m
+        return c, m, asyncio
+
+    def test_search_podcast_episodes_route_and_params(self):
+        c, m, asyncio = self._async_client_and_mock()
+        asyncio.run(c.audio.search_podcast_episodes("ai", flyf_id=FLYF_ID, limit=5))
+        method, path = m.call_args.args[0], m.call_args.args[1]
+        assert method == "GET"
+        assert path == "/audio/episodes/search"
+        assert m.call_args.kwargs["params"] == {
+            "q": "ai", "flyf_id": FLYF_ID, "limit": 5,
+        }
+        asyncio.run(c.close())
+
+    def test_search_podcast_guests_route_and_params(self):
+        c, m, asyncio = self._async_client_and_mock()
+        asyncio.run(c.audio.search_podcast_guests("Sam Altman", limit=3))
+        assert m.call_args.args[1] == "/audio/guests/search"
+        assert m.call_args.kwargs["params"] == {"q": "Sam Altman", "limit": 3}
+        asyncio.run(c.close())
+
+    def test_get_podcast_mentions_route_and_params(self):
+        c, m, asyncio = self._async_client_and_mock()
+        asyncio.run(c.audio.get_podcast_mentions(
+            "Anthropic", entity_type="organization", flyf_id=FLYF_ID,
+            limit=50, offset=100))
+        assert m.call_args.args[1] == "/audio/mentions"
+        assert m.call_args.kwargs["params"] == {
+            "entity": "Anthropic", "entity_type": "organization",
+            "flyf_id": FLYF_ID, "limit": 50, "offset": 100,
+        }
+        asyncio.run(c.close())
+
+    def test_get_podcast_sponsors_by_company(self):
+        c, m, asyncio = self._async_client_and_mock()
+        asyncio.run(c.audio.get_podcast_sponsors(company="Squarespace"))
+        assert m.call_args.args[1] == "/audio/sponsors"
+        assert m.call_args.kwargs["params"] == {
+            "company": "Squarespace", "limit": 20, "offset": 0,
+        }
+        asyncio.run(c.close())
+
+    def test_get_podcast_sponsors_hashes_episode_url(self):
+        c, m, asyncio = self._async_client_and_mock()
+        asyncio.run(c.audio.get_podcast_sponsors(episode_url=EPISODE_URL))
+        params = m.call_args.kwargs["params"]
+        assert params["episode_url_hash"] == EPISODE_URL_HASH
+        assert "episode_url" not in params
+        asyncio.run(c.close())
+
+    def test_get_podcast_sponsors_explicit_hash_wins(self):
+        c, m, asyncio = self._async_client_and_mock()
+        asyncio.run(c.audio.get_podcast_sponsors(
+            episode_url_hash="a" * 40, episode_url=EPISODE_URL))
+        assert m.call_args.kwargs["params"]["episode_url_hash"] == "a" * 40
+        asyncio.run(c.close())
+
+    def test_get_podcast_sponsors_empty_hash_falls_back_to_episode_url(self):
+        c, m, asyncio = self._async_client_and_mock()
+        asyncio.run(c.audio.get_podcast_sponsors(
+            episode_url_hash="", episode_url=EPISODE_URL))
+        assert m.call_args.kwargs["params"]["episode_url_hash"] == EPISODE_URL_HASH
+        asyncio.run(c.close())
+
+    def test_get_podcast_sponsors_requires_company_or_episode(self):
+        c, m, asyncio = self._async_client_and_mock()
+        with pytest.raises(ValueError):
+            asyncio.run(c.audio.get_podcast_sponsors())
+        m.assert_not_awaited()
+        asyncio.run(c.close())
+
+    def test_get_show_notes_route_and_params(self):
+        c, m, asyncio = self._async_client_and_mock()
+        asyncio.run(c.audio.get_show_notes(EPISODE_URL, language="es"))
+        assert m.call_args.args[1] == "/audio/transcripts/show-notes"
+        assert m.call_args.kwargs["params"] == {
+            "episode_url": EPISODE_URL, "language": "es",
+        }
+        asyncio.run(c.close())
+
+    def test_phase4_routes_and_params(self):
+        c, m, asyncio = self._async_client_and_mock()
+
+        asyncio.run(c.audio.get_fact_checks(EPISODE_URL))
+        assert m.call_args.args[1] == "/audio/fact-checks"
+        assert m.call_args.kwargs["params"] == {"episode_url": EPISODE_URL}
+
+        asyncio.run(c.audio.get_translation(EPISODE_URL, "pt-BR"))
+        assert m.call_args.args[1] == "/audio/translations"
+        assert m.call_args.kwargs["params"] == {
+            "episode_url": EPISODE_URL, "language": "pt-BR",
+        }
+
+        asyncio.run(c.audio.get_catch_up(EPISODE_URL, 0))
+        assert m.call_args.args[1] == "/audio/catch-up"
+        assert m.call_args.kwargs["params"]["timestamp"] == 0
+
+        asyncio.run(c.audio.skip_to_topic(EPISODE_URL, "evals", limit=20))
+        assert m.call_args.args[1] == "/audio/skip-to-topic"
+        assert m.call_args.kwargs["params"] == {
+            "episode_url": EPISODE_URL, "topic": "evals", "limit": 20,
+        }
+        asyncio.run(c.close())

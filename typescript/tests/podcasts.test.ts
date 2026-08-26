@@ -98,6 +98,15 @@ test('getPodcastSponsors prefers an explicit episode_url_hash over episode_url',
   assert.equal(u.searchParams.get('episode_url_hash'), explicit);
 });
 
+test('getPodcastSponsors treats an empty episode_url_hash as absent and hashes episode_url', async () => {
+  const calls: Call[] = [];
+  await clientWithCapture(calls).audio.getPodcastSponsors({
+    episode_url_hash: '', episode_url: EPISODE_URL,
+  });
+  const u = new URL(calls[0].url);
+  assert.equal(u.searchParams.get('episode_url_hash'), EPISODE_URL_HASH);
+});
+
 test('getPodcastSponsors throws when neither company nor an episode is given', async () => {
   const calls: Call[] = [];
   const c = clientWithCapture(calls);

@@ -207,8 +207,9 @@ Map<String, Object> mentions = client.audio.getPodcastMentions("Anthropic", "org
 
 // Sponsor/ad intelligence — by company, or all ads in one episode
 Map<String, Object> ads = client.audio.getPodcastSponsorsByCompany("Squarespace");
-Map<String, Object> episodeAds = client.audio.getPodcastSponsorsForEpisode(
-        AudioApi.episodeUrlHash("https://cdn.example.com/ep-142.mp3"));
+Map<String, Object> episodeAds = client.audio.getPodcastSponsorsForEpisodeUrl(
+        "https://cdn.example.com/ep-142.mp3"); // hashed for you; a precomputed
+        // hash works too: getPodcastSponsorsForEpisode(episodeUrlHash)
 
 // Structured show notes (summary, topics, outline, takeaways, chapters)
 Map<String, Object> notes = client.audio.getShowNotes("https://cdn.example.com/ep-142.mp3");

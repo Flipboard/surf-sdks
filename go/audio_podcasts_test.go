@@ -138,6 +138,51 @@ func TestGetPodcastSponsorsByEpisode(t *testing.T) {
 	}
 }
 
+func TestGetPodcastSponsorsForEpisodeURL(t *testing.T) {
+	var got capturedAPIRequest
+	c := newAPIServer(t, &got, `{"ok":true}`)
+	if _, err := c.Audio.GetPodcastSponsorsForEpisodeURL(testEpisodeURL, 50, 100); err != nil {
+		t.Fatalf("GetPodcastSponsorsForEpisodeURL: %v", err)
+	}
+	if got.path != "/v1/audio/sponsors" {
+		t.Fatalf("path = %s", got.path)
+	}
+	q := got.query
+	if q.Get("episode_url_hash") != EpisodeURLHash(testEpisodeURL) ||
+		q.Get("limit") != "50" || q.Get("offset") != "100" {
+		t.Fatalf("query = %v", q)
+	}
+	for _, k := range []string{"company", "flyf_id", "episode_url"} {
+		if _, ok := q[k]; ok {
+			t.Fatalf("%s should be omitted", k)
+		}
+	}
+}
+
+func TestGetPodcastSponsorsForEpisodeURLOmitsOptionalParams(t *testing.T) {
+	var got capturedAPIRequest
+	c := newAPIServer(t, &got, `{"ok":true}`)
+	if _, err := c.Audio.GetPodcastSponsorsForEpisodeURL(testEpisodeURL, 0, 0); err != nil {
+		t.Fatalf("GetPodcastSponsorsForEpisodeURL: %v", err)
+	}
+	for _, k := range []string{"limit", "offset"} {
+		if _, ok := got.query[k]; ok {
+			t.Fatalf("%s should be omitted when <= 0", k)
+		}
+	}
+}
+
+func TestGetPodcastSponsorsForEpisodeURLRequiresURL(t *testing.T) {
+	var got capturedAPIRequest
+	c := newAPIServer(t, &got, `{"ok":true}`)
+	if _, err := c.Audio.GetPodcastSponsorsForEpisodeURL("", 0, 0); err == nil {
+		t.Fatal("expected an error when episodeURL is empty")
+	}
+	if got.method != "" {
+		t.Fatal("no request should be made")
+	}
+}
+
 func TestGetPodcastSponsorsRequiresCompanyOrEpisode(t *testing.T) {
 	var got capturedAPIRequest
 	c := newAPIServer(t, &got, `{"ok":true}`)

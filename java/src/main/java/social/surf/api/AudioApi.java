@@ -185,6 +185,30 @@ public class AudioApi {
     }
 
     /**
+     * All ad placements in one episode identified by its full audio URL, in ad order
+     * (limit 20). The URL is hashed for you with {@link #episodeUrlHash(String)}. See the
+     * full overload.
+     */
+    public Map<String, Object> getPodcastSponsorsForEpisodeUrl(String episodeUrl) {
+        return getPodcastSponsorsForEpisodeUrl(episodeUrl, 20, 0);
+    }
+
+    /**
+     * All ad placements in one episode identified by its full audio URL, in ad order.
+     * The URL is hashed for you with {@link #episodeUrlHash(String)} and passed to
+     * {@link #getPodcastSponsors} as {@code episode_url_hash}. {@code limit} default 20,
+     * max 100; {@code offset} paginates (max 10000).
+     *
+     * @throws IllegalArgumentException when {@code episodeUrl} is null/empty
+     */
+    public Map<String, Object> getPodcastSponsorsForEpisodeUrl(String episodeUrl, int limit, int offset) {
+        if (episodeUrl == null || episodeUrl.isEmpty()) {
+            throw new IllegalArgumentException("episodeUrl is required");
+        }
+        return getPodcastSponsors(null, episodeUrlHash(episodeUrl), null, limit, offset);
+    }
+
+    /**
      * Query the podcast sponsor/ads database ({@code read:audio}). Each row is one
      * detected ad placement in one episode: advertiser, product, category, format, promo
      * code, exact time range, and an {@code ad_text_preview}. Search by {@code company}

@@ -701,7 +701,12 @@ class AudioAPI {
     offset?: number;
   }): Promise<PodcastSponsorsResponse> {
     const { episode_url, episode_url_hash, ...rest } = opts;
-    const hash = episode_url_hash ?? (episode_url ? episodeUrlHash(episode_url) : undefined);
+    // Treat an empty/whitespace hash as absent so the episode_url fallback still applies.
+    const hash = episode_url_hash?.trim()
+      ? episode_url_hash
+      : episode_url
+        ? episodeUrlHash(episode_url)
+        : undefined;
     if (!rest.company && !hash) {
       throw new Error("getPodcastSponsors requires at least one of 'company', 'episode_url_hash', or 'episode_url'");
     }

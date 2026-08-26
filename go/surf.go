@@ -1052,6 +1052,18 @@ func (a *AudioAPI) GetPodcastSponsors(company, episodeURLHash, flyfID string, li
 	return a.c.get("/audio/sponsors", v)
 }
 
+// GetPodcastSponsorsForEpisodeURL lists all detected ad placements in one
+// episode identified by its full audio URL (read:audio). Convenience wrapper
+// around GetPodcastSponsors that hashes episodeURL with EpisodeURLHash for
+// you. limit <= 0 uses the server default of 20 (max 100); offset paginates
+// (max 10000). PodcastSponsorsResponse is available as a decode target.
+func (a *AudioAPI) GetPodcastSponsorsForEpisodeURL(episodeURL string, limit, offset int) (json.RawMessage, error) {
+	if episodeURL == "" {
+		return nil, fmt.Errorf("surf: episodeURL is required")
+	}
+	return a.GetPodcastSponsors("", EpisodeURLHash(episodeURL), "", limit, offset)
+}
+
 // Podcast intelligence — phase 4 (per-episode, retrieval only)
 
 // GetFactChecks returns stored fact-check results for an episode, in claim
