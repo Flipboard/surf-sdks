@@ -28,6 +28,15 @@ import type {
   Document,
   Publication,
   PublicationDocumentEntry,
+  PodcastEpisodeSearchResponse,
+  PodcastGuestSearchResponse,
+  PodcastMentionsResponse,
+  PodcastSponsorsResponse,
+  ShowNotesResponse,
+  PodcastFactChecksResponse,
+  PodcastTranslationResponse,
+  PodcastCatchUpResponse,
+  PodcastTopicSeekResponse,
 } from './types';
 
 export * from './types';
@@ -569,6 +578,49 @@ class ImagesAPI {
 // Audio
 // ==========================================================================
 
+/**
+ * SHA1 hex of a full episode audio URL.
+ *
+ * `episode_url_hash` is the episode's stable ID across the podcast intelligence
+ * endpoints (episode search results, guest appearances, mentions, and the
+ * sponsor/ads database). Pure-TS SHA-1 (FIPS 180-4) so it's synchronous and works
+ * in any runtime — no Node crypto or WebCrypto dependency.
+ */
+export function episodeUrlHash(episodeUrl: string): string {
+  const data = new TextEncoder().encode(episodeUrl);
+  // Pad to a multiple of 64 bytes: message + 0x80 + zeros + 64-bit bit length.
+  const totalLen = (((data.length + 8) >> 6) + 1) << 6;
+  const msg = new Uint8Array(totalLen);
+  msg.set(data);
+  msg[data.length] = 0x80;
+  const view = new DataView(msg.buffer);
+  // Big-endian 64-bit bit length (URLs are nowhere near 2^32 bits, so the split is exact).
+  view.setUint32(totalLen - 8, Math.floor(data.length / 0x20000000), false);
+  view.setUint32(totalLen - 4, (data.length << 3) >>> 0, false);
+
+  let h0 = 0x67452301, h1 = 0xefcdab89, h2 = 0x98badcfe, h3 = 0x10325476, h4 = 0xc3d2e1f0;
+  const w = new Int32Array(80);
+  for (let i = 0; i < totalLen; i += 64) {
+    for (let j = 0; j < 16; j++) w[j] = view.getInt32(i + j * 4, false);
+    for (let j = 16; j < 80; j++) {
+      const n = w[j - 3] ^ w[j - 8] ^ w[j - 14] ^ w[j - 16];
+      w[j] = (n << 1) | (n >>> 31);
+    }
+    let a = h0, b = h1, c = h2, d = h3, e = h4;
+    for (let j = 0; j < 80; j++) {
+      let f: number, k: number;
+      if (j < 20) { f = (b & c) | (~b & d); k = 0x5a827999; }
+      else if (j < 40) { f = b ^ c ^ d; k = 0x6ed9eba1; }
+      else if (j < 60) { f = (b & c) | (b & d) | (c & d); k = 0x8f1bbcdc; }
+      else { f = b ^ c ^ d; k = 0xca62c1d6; }
+      const t = (((a << 5) | (a >>> 27)) + f + e + k + w[j]) | 0;
+      e = d; d = c; c = (b << 30) | (b >>> 2); b = a; a = t;
+    }
+    h0 = (h0 + a) | 0; h1 = (h1 + b) | 0; h2 = (h2 + c) | 0; h3 = (h3 + d) | 0; h4 = (h4 + e) | 0;
+  }
+  return [h0, h1, h2, h3, h4].map((x) => (x >>> 0).toString(16).padStart(8, '0')).join('');
+}
+
 /** Radio stations, briefings, podcasts, and text-to-speech. */
 class AudioAPI {
   constructor(private c: SurfClient) {}
@@ -583,6 +635,122 @@ class AudioAPI {
   generateBriefing() { return this.c._post('/audio/briefing/generate'); }
   getBriefing(id?: string) { return this.c._get(id ? `/audio/briefing/${id}` : '/audio/briefing/latest'); }
   getTranscript(episode_url: string) { return this.c._get('/audio/transcript', { episode_url }); }
+  /**
+   * Structured, AI-generated show notes for a transcribed episode (`read:audio`):
+   * summary, topics, people, organizations, timestamped outline, key takeaways, and
+   * chapters, plus a `signed_url` for the raw show-notes JSON. Throws
+   * {@link SurfNotFoundError} if notes haven't been generated for the episode yet.
+   * `language` (e.g. 'en', 'es') requests translated notes.
+   */
+  getShowNotes(episode_url: string, language?: string): Promise<ShowNotesResponse> {
+    return this.c._get('/audio/transcripts/show-notes', { episode_url, language });
+  }
+
+  // Podcast intelligence
+
+  /**
+   * Semantic search across transcribed podcast episodes (`read:audio`). Finds episodes
+   * matching a natural-language query via embedding similarity over transcript chunks
+   * (no keyword overlap required); each result carries the matching chunk's time range
+   * (`chunk_start_seconds`/`chunk_end_seconds`), a text `preview`, and a similarity
+   * `score` (0-1). Results include `episode_url_hash` (SHA1 hex of the full audio URL —
+   * the episode's stable ID; see {@link episodeUrlHash}). `flyf_id` restricts to one
+   * podcast (SHA1 hex of the full RSS feed URL); `limit` default 20, max 100.
+   */
+  searchPodcastEpisodes(q: string, opts?: { flyf_id?: string; limit?: number }): Promise<PodcastEpisodeSearchResponse> {
+    return this.c._get('/audio/episodes/search', { q, ...opts });
+  }
+  /**
+   * Search podcast guests and hosts by name (fuzzy matching, `read:audio`). Each match
+   * includes known profile details (title, organization, social handles) and detected
+   * episode `appearances` with role, confidence, and speaking time. `limit` default 20, max 100.
+   */
+  searchPodcastGuests(q: string, limit = 20): Promise<PodcastGuestSearchResponse> {
+    return this.c._get('/audio/guests/search', { q, limit });
+  }
+  /**
+   * Find podcast episodes mentioning a person, organization, or location (`read:audio`).
+   * Case-insensitive NER over transcripts; each row covers one episode with the mention
+   * count, first mention time, and up to 50 mention `timestamps` (`{start, end}` seconds)
+   * for deep-linking. Newest episodes first; paginate with `limit`/`offset`.
+   */
+  getPodcastMentions(entity: string, opts?: {
+    entity_type?: 'person' | 'organization' | 'location';
+    flyf_id?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<PodcastMentionsResponse> {
+    return this.c._get('/audio/mentions', { entity, ...opts });
+  }
+  /**
+   * Query the podcast sponsor/ads database (`read:audio`). Each row is one detected ad
+   * placement in one episode: advertiser, product, category, format, promo code, exact
+   * time range, and an `ad_text_preview`. Search by `company` (case-insensitive, newest
+   * placements first) or list all ads in a single episode via `episode_url_hash` (SHA1
+   * hex of the full audio URL) or the convenience `episode_url` (hashed for you with
+   * {@link episodeUrlHash}); at least one of the three is required — combine company +
+   * episode to check whether a company advertised in a specific episode.
+   */
+  getPodcastSponsors(opts: {
+    company?: string;
+    episode_url_hash?: string;
+    /** Full episode audio URL; the SDK hashes it into `episode_url_hash` (ignored when the hash is passed directly). */
+    episode_url?: string;
+    flyf_id?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<PodcastSponsorsResponse> {
+    const { episode_url, episode_url_hash, ...rest } = opts;
+    const hash = episode_url_hash ?? (episode_url ? episodeUrlHash(episode_url) : undefined);
+    if (!rest.company && !hash) {
+      throw new Error("getPodcastSponsors requires at least one of 'company', 'episode_url_hash', or 'episode_url'");
+    }
+    return this.c._get('/audio/sponsors', { ...rest, episode_url_hash: hash });
+  }
+
+  // Podcast intelligence — phase 4 (per-episode, retrieval only)
+
+  /**
+   * Stored fact-check results for an episode, in claim order (`read:audio`). Each claim
+   * carries `claim_text`, `claim_type`, `timestamp_seconds`, a `verdict` with
+   * `confidence` and `explanation`, plus the `sources` and `search_queries` behind it;
+   * `summary` counts claims per verdict. Retrieval only — never triggers a new
+   * fact-check run. Throws {@link SurfNotFoundError} when the episode has no fact checks.
+   */
+  getFactChecks(episode_url: string): Promise<PodcastFactChecksResponse> {
+    return this.c._get('/audio/fact-checks', { episode_url });
+  }
+  /**
+   * A stored transcript translation for an episode in `language` (e.g. 'es', 'pt-BR';
+   * `read:audio`): the full `translated_transcript`, timestamped `translated_segments`,
+   * and — when TTS was generated — a translated `audio_url` with duration and voice.
+   * Retrieval only — never translates on demand. Throws {@link SurfNotFoundError} when
+   * no stored translation exists for the language.
+   */
+  getTranslation(episode_url: string, language: string): Promise<PodcastTranslationResponse> {
+    return this.c._get('/audio/translations', { episode_url, language });
+  }
+  /**
+   * "What did I miss?" — summarizes an episode up to a playback position (seconds,
+   * 0-86400; `read:audio`): a prose `summary` plus `topics_covered`, `key_points`, and
+   * `missed_duration_seconds`. Works from the cached transcript only and never triggers
+   * transcription — throws {@link SurfNotFoundError} (error "transcript not available")
+   * when the episode has no transcript yet.
+   */
+  getCatchUp(episode_url: string, timestamp_seconds: number): Promise<PodcastCatchUpResponse> {
+    return this.c._get('/audio/catch-up', { episode_url, timestamp: timestamp_seconds });
+  }
+  /**
+   * Semantic "jump to the part about X" within one episode (`read:audio`). `matches`
+   * come back best first, each with `start_seconds`/`end_seconds` for deep-linking, a
+   * `text_preview`, and a relevance `score`; empty `matches` with `ok: true` means
+   * nothing scored above the relevance floor. Works from the cached transcript only and
+   * never triggers transcription — throws {@link SurfNotFoundError} when the episode has
+   * no transcript yet. `limit` default 5, max 20.
+   */
+  skipToTopic(episode_url: string, topic: string, limit = 5): Promise<PodcastTopicSeekResponse> {
+    return this.c._get('/audio/skip-to-topic', { episode_url, topic, limit });
+  }
   getDailyQuiz() { return this.c._get('/audio/quiz/daily'); }
   async textToSpeech(text: string, voice = 'en-US-AriaNeural'): Promise<ArrayBuffer> {
     const resp = await this.c._request<Response>('POST', '/audio/tts', { json: { text, voice }, raw: true });

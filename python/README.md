@@ -135,6 +135,58 @@ briefing = client.audio.get_briefing()
 transcript = client.audio.get_transcript("surf/post/abc123")
 ```
 
+## Podcast Intelligence
+
+Search and mine transcribed podcasts (`read:audio` scope). Episodes are
+identified by `episode_url_hash` — the SHA1 hex of the full audio URL
+(`surf_api.episode_url_sha1(url)` computes it). Coverage starts with a pilot
+subset of podcasts and expands over time.
+
+```python
+# Semantic episode search — natural language over transcript chunks
+hits = client.audio.search_podcast_episodes("episodes about AI agents")
+for r in hits["results"]:
+    print(r["episode_title"], r["score"], r["chunk_start_seconds"], r["preview"])
+
+# Guest search — fuzzy name match with detected appearances
+guests = client.audio.search_podcast_guests("Sam Altman")
+
+# Entity mentions — who/what gets talked about, with in-episode timestamps
+mentions = client.audio.get_podcast_mentions("Anthropic", entity_type="organization")
+
+# Sponsor/ad intelligence — by company, or all ads in one episode
+ads = client.audio.get_podcast_sponsors(company="Squarespace")
+ads = client.audio.get_podcast_sponsors(episode_url="https://cdn.example.com/ep-142.mp3")
+
+# Structured show notes (summary, topics, outline, takeaways, chapters)
+notes = client.audio.get_show_notes("https://cdn.example.com/ep-142.mp3")
+
+# Fact checks — stored verdicts per claim, with sources (404 if none yet)
+checks = client.audio.get_fact_checks("https://cdn.example.com/ep-142.mp3")
+
+# Stored transcript translation (retrieval only — never translates on demand)
+spanish = client.audio.get_translation("https://cdn.example.com/ep-142.mp3", "es")
+
+# "What did I miss?" — summary of everything before a playback position
+recap = client.audio.get_catch_up("https://cdn.example.com/ep-142.mp3", 1830.5)
+
+# Semantic skip-to-topic — jump to the part about X (best matches first)
+spots = client.audio.skip_to_topic("https://cdn.example.com/ep-142.mp3", "the housing market")
+for m in spots["matches"]:
+    print(m["start_seconds"], m["score"], m["text_preview"])
+```
+
+The phase-4 calls (`get_fact_checks`, `get_translation`, `get_catch_up`,
+`skip_to_topic`) are retrieval only and take the raw `episode_url` (no hashing).
+Catch-up and skip-to-topic work from the cached transcript and raise
+`SurfNotFoundError` until the episode has one.
+
+Typed models are available in `surf_api.models`: `PodcastEpisodeSearchResult`,
+`PodcastGuest` (+ `PodcastGuestAppearance`), `PodcastMention`, `PodcastSponsorAd`,
+`PodcastFactCheck`, `PodcastTranslation`, and `PodcastTopicMatch` — each with
+`from_dict` / `from_list` helpers, e.g.
+`PodcastSponsorAd.from_list(client.audio.get_podcast_sponsors(company="Squarespace"))`.
+
 ## Error Handling
 
 ```python

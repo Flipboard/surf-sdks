@@ -429,3 +429,306 @@ class ProfileLink:
             icon=d.get("icon"),
             order=d.get("order", 0),
         )
+
+
+# ==========================================================================
+# Podcast intelligence (episode search, guests, mentions, sponsors)
+# ==========================================================================
+
+@dataclass
+class PodcastEpisodeSearchResult:
+    """One transcript chunk matching a semantic podcast episode search."""
+    episode_url: str = ""
+    episode_url_hash: str = ""  # SHA1 hex of the full audio URL — stable episode ID
+    flyf_id: Optional[str] = None  # podcast feed ID (SHA1 hex of the full RSS feed URL)
+    podcast_name: Optional[str] = None
+    episode_title: Optional[str] = None
+    score: float = 0.0  # semantic similarity (0-1, higher is better)
+    chunk_start_seconds: Optional[float] = None
+    chunk_end_seconds: Optional[float] = None
+    preview: Optional[str] = None
+
+    @classmethod
+    def from_dict(cls, d: Optional[dict]) -> Optional[PodcastEpisodeSearchResult]:
+        if not d:
+            return None
+        return cls(
+            episode_url=d.get("episode_url", ""),
+            episode_url_hash=d.get("episode_url_hash", ""),
+            flyf_id=d.get("flyf_id"),
+            podcast_name=d.get("podcast_name"),
+            episode_title=d.get("episode_title"),
+            score=d.get("score", 0.0),
+            chunk_start_seconds=d.get("chunk_start_seconds"),
+            chunk_end_seconds=d.get("chunk_end_seconds"),
+            preview=d.get("preview"),
+        )
+
+    @classmethod
+    def from_list(cls, data) -> List[PodcastEpisodeSearchResult]:
+        """Parse results from an API response (list or dict with 'results')."""
+        if isinstance(data, dict):
+            data = data.get("results", [])
+        if isinstance(data, list):
+            return [r for d in data if (r := cls.from_dict(d)) is not None]
+        return []
+
+
+@dataclass
+class PodcastGuestAppearance:
+    """One detected episode appearance of a podcast guest or host."""
+    flyf_id: Optional[str] = None  # podcast feed ID (SHA1 hex of the full RSS feed URL)
+    podcast_name: Optional[str] = None
+    episode_url: str = ""
+    episode_url_hash: str = ""  # SHA1 hex of the full audio URL
+    role: Optional[str] = None  # e.g. 'host', 'guest'
+    confidence: Optional[float] = None  # detection confidence (0-1)
+    speaking_time_seconds: Optional[float] = None
+    detected_at: Optional[str] = None
+
+    @classmethod
+    def from_dict(cls, d: Optional[dict]) -> Optional[PodcastGuestAppearance]:
+        if not d:
+            return None
+        return cls(
+            flyf_id=d.get("flyf_id"),
+            podcast_name=d.get("podcast_name"),
+            episode_url=d.get("episode_url", ""),
+            episode_url_hash=d.get("episode_url_hash", ""),
+            role=d.get("role"),
+            confidence=d.get("confidence"),
+            speaking_time_seconds=d.get("speaking_time_seconds"),
+            detected_at=d.get("detected_at"),
+        )
+
+
+@dataclass
+class PodcastGuest:
+    """A podcast guest or host detected via transcript and speaker analysis."""
+    name: str = ""
+    title: Optional[str] = None  # professional title, when known (e.g. 'CEO')
+    organization: Optional[str] = None
+    bluesky_handle: Optional[str] = None
+    mastodon_handle: Optional[str] = None
+    appearances: List[PodcastGuestAppearance] = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, d: Optional[dict]) -> Optional[PodcastGuest]:
+        if not d:
+            return None
+        return cls(
+            name=d.get("name", ""),
+            title=d.get("title"),
+            organization=d.get("organization"),
+            bluesky_handle=d.get("bluesky_handle"),
+            mastodon_handle=d.get("mastodon_handle"),
+            appearances=[
+                a for x in d.get("appearances", [])
+                if (a := PodcastGuestAppearance.from_dict(x)) is not None
+            ],
+        )
+
+    @classmethod
+    def from_list(cls, data) -> List[PodcastGuest]:
+        """Parse guests from an API response (list or dict with 'guests')."""
+        if isinstance(data, dict):
+            data = data.get("guests", [])
+        if isinstance(data, list):
+            return [g for d in data if (g := cls.from_dict(d)) is not None]
+        return []
+
+
+@dataclass
+class PodcastMention:
+    """All mentions of one entity within one episode."""
+    episode_url: str = ""
+    episode_url_hash: str = ""  # SHA1 hex of the full audio URL
+    flyf_id: Optional[str] = None  # podcast feed ID (SHA1 hex of the full RSS feed URL)
+    entity: str = ""  # entity name as spoken/recognized (original casing)
+    entity_type: str = ""  # 'person', 'organization', or 'location'
+    mention_count: int = 0
+    first_start_seconds: Optional[float] = None
+    timestamps: List[dict] = field(default_factory=list)  # [{'start': s, 'end': s}], up to 50
+    created_at: Optional[str] = None  # when the episode was indexed
+
+    @classmethod
+    def from_dict(cls, d: Optional[dict]) -> Optional[PodcastMention]:
+        if not d:
+            return None
+        return cls(
+            episode_url=d.get("episode_url", ""),
+            episode_url_hash=d.get("episode_url_hash", ""),
+            flyf_id=d.get("flyf_id"),
+            entity=d.get("entity", ""),
+            entity_type=d.get("entity_type", ""),
+            mention_count=d.get("mention_count", 0),
+            first_start_seconds=d.get("first_start_seconds"),
+            timestamps=d.get("timestamps", []) or [],
+            created_at=d.get("created_at"),
+        )
+
+    @classmethod
+    def from_list(cls, data) -> List[PodcastMention]:
+        """Parse mentions from an API response (list or dict with 'mentions')."""
+        if isinstance(data, dict):
+            data = data.get("mentions", [])
+        if isinstance(data, list):
+            return [m for d in data if (m := cls.from_dict(d)) is not None]
+        return []
+
+
+@dataclass
+class PodcastSponsorAd:
+    """One classified podcast ad placement in one episode."""
+    episode_url: str = ""
+    episode_url_hash: str = ""  # SHA1 hex of the full audio URL
+    flyf_id: Optional[str] = None  # podcast feed ID (SHA1 hex of the full RSS feed URL)
+    company: str = ""  # advertiser company name
+    product: Optional[str] = None
+    category: Optional[str] = None  # e.g. 'technology', 'finance', 'health'
+    ad_format: Optional[str] = None  # e.g. 'host_read', 'produced'
+    promo_code: Optional[str] = None
+    start_seconds: Optional[float] = None
+    end_seconds: Optional[float] = None
+    duration_seconds: Optional[float] = None
+    confidence: Optional[float] = None  # ad detection confidence (0-1)
+    ad_text_preview: Optional[str] = None  # up to 1024 chars of the ad read
+    model_version: Optional[str] = None
+    created_at: Optional[str] = None
+
+    @classmethod
+    def from_dict(cls, d: Optional[dict]) -> Optional[PodcastSponsorAd]:
+        if not d:
+            return None
+        return cls(
+            episode_url=d.get("episode_url", ""),
+            episode_url_hash=d.get("episode_url_hash", ""),
+            flyf_id=d.get("flyf_id"),
+            company=d.get("company", ""),
+            product=d.get("product"),
+            category=d.get("category"),
+            ad_format=d.get("ad_format"),
+            promo_code=d.get("promo_code"),
+            start_seconds=d.get("start_seconds"),
+            end_seconds=d.get("end_seconds"),
+            duration_seconds=d.get("duration_seconds"),
+            confidence=d.get("confidence"),
+            ad_text_preview=d.get("ad_text_preview"),
+            model_version=d.get("model_version"),
+            created_at=d.get("created_at"),
+        )
+
+    @classmethod
+    def from_list(cls, data) -> List[PodcastSponsorAd]:
+        """Parse sponsor ads from an API response (list or dict with 'sponsors')."""
+        if isinstance(data, dict):
+            data = data.get("sponsors", [])
+        if isinstance(data, list):
+            return [s for d in data if (s := cls.from_dict(d)) is not None]
+        return []
+
+
+# ==========================================================================
+# Podcast intelligence — phase 4 (fact checks, translations, topic seek)
+# ==========================================================================
+
+@dataclass
+class PodcastFactCheck:
+    """One fact-checked claim from a podcast episode."""
+    claim_index: int = 0
+    claim_text: str = ""
+    claim_type: Optional[str] = None  # e.g. 'statistic', 'event', 'quote'
+    timestamp_seconds: Optional[float] = None  # where the claim is made
+    verdict: str = ""  # e.g. 'verified', 'disputed', 'false', 'unverifiable'
+    confidence: Optional[float] = None  # verdict confidence (0-1)
+    explanation: Optional[str] = None
+    sources: List[dict] = field(default_factory=list)  # citation objects
+    search_queries: List[str] = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, d: Optional[dict]) -> Optional[PodcastFactCheck]:
+        if not d:
+            return None
+        return cls(
+            claim_index=d.get("claim_index", 0),
+            claim_text=d.get("claim_text", ""),
+            claim_type=d.get("claim_type"),
+            timestamp_seconds=d.get("timestamp_seconds"),
+            verdict=d.get("verdict", ""),
+            confidence=d.get("confidence"),
+            explanation=d.get("explanation"),
+            sources=d.get("sources", []) or [],
+            search_queries=d.get("search_queries", []) or [],
+        )
+
+    @classmethod
+    def from_list(cls, data) -> List[PodcastFactCheck]:
+        """Parse claims from an API response (list or dict with 'fact_checks')."""
+        if isinstance(data, dict):
+            data = data.get("fact_checks", [])
+        if isinstance(data, list):
+            return [c for d in data if (c := cls.from_dict(d)) is not None]
+        return []
+
+
+@dataclass
+class PodcastTranslation:
+    """A stored transcript translation for one episode and language."""
+    source_language: Optional[str] = None
+    target_language: Optional[str] = None
+    translated_transcript: str = ""
+    translated_segments: List[dict] = field(default_factory=list)  # timestamped
+    audio_url: Optional[str] = None  # translated TTS audio, when generated
+    audio_duration_seconds: Optional[float] = None
+    tts_voice: Optional[str] = None
+    word_count: Optional[int] = None
+    original_duration_seconds: Optional[float] = None
+
+    @classmethod
+    def from_dict(cls, d: Optional[dict]) -> Optional[PodcastTranslation]:
+        """Parse a translation object, or a full response dict (uses its
+        'translation' key). Returns None when absent (the API's 404 shape)."""
+        if not d:
+            return None
+        if "translation" in d and "translated_transcript" not in d:
+            return cls.from_dict(d.get("translation"))
+        return cls(
+            source_language=d.get("source_language"),
+            target_language=d.get("target_language"),
+            translated_transcript=d.get("translated_transcript", ""),
+            translated_segments=d.get("translated_segments", []) or [],
+            audio_url=d.get("audio_url"),
+            audio_duration_seconds=d.get("audio_duration_seconds"),
+            tts_voice=d.get("tts_voice"),
+            word_count=d.get("word_count"),
+            original_duration_seconds=d.get("original_duration_seconds"),
+        )
+
+
+@dataclass
+class PodcastTopicMatch:
+    """One transcript passage matching a skip-to-topic query."""
+    start_seconds: Optional[float] = None
+    end_seconds: Optional[float] = None
+    text_preview: Optional[str] = None
+    score: Optional[float] = None  # relevance (higher is more relevant)
+
+    @classmethod
+    def from_dict(cls, d: Optional[dict]) -> Optional[PodcastTopicMatch]:
+        if not d:
+            return None
+        return cls(
+            start_seconds=d.get("start_seconds"),
+            end_seconds=d.get("end_seconds"),
+            text_preview=d.get("text_preview"),
+            score=d.get("score"),
+        )
+
+    @classmethod
+    def from_list(cls, data) -> List[PodcastTopicMatch]:
+        """Parse matches from an API response (list or dict with 'matches')."""
+        if isinstance(data, dict):
+            data = data.get("matches", [])
+        if isinstance(data, list):
+            return [m for d in data if (m := cls.from_dict(d)) is not None]
+        return []

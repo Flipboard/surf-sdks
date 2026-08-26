@@ -228,3 +228,243 @@ type ProfileLink struct {
 	Icon  string `json:"icon,omitempty"`
 	Order int    `json:"order"`
 }
+
+// PodcastEpisodeSearchResult is one transcript chunk matching a semantic
+// podcast episode search.
+type PodcastEpisodeSearchResult struct {
+	EpisodeURL string `json:"episode_url"`
+	// EpisodeURLHash is the SHA1 hex of the full audio URL — the episode's
+	// stable ID across the audio APIs (see the EpisodeURLHash function).
+	EpisodeURLHash string `json:"episode_url_hash"`
+	// FlyfID is the podcast feed ID (SHA1 hex of the full RSS feed URL).
+	FlyfID       *string `json:"flyf_id,omitempty"`
+	PodcastName  *string `json:"podcast_name,omitempty"`
+	EpisodeTitle *string `json:"episode_title,omitempty"`
+	// Score is the semantic similarity (0-1, higher is better).
+	Score             float64  `json:"score"`
+	ChunkStartSeconds *float64 `json:"chunk_start_seconds,omitempty"`
+	ChunkEndSeconds   *float64 `json:"chunk_end_seconds,omitempty"`
+	Preview           *string  `json:"preview,omitempty"`
+}
+
+// PodcastEpisodeSearchResponse is the response of Audio.SearchPodcastEpisodes.
+type PodcastEpisodeSearchResponse struct {
+	OK      bool                         `json:"ok"`
+	Query   string                       `json:"query"`
+	FlyfID  *string                      `json:"flyf_id,omitempty"`
+	Results []PodcastEpisodeSearchResult `json:"results"`
+	Total   int                          `json:"total"`
+}
+
+// PodcastGuestAppearance is one detected episode appearance of a podcast
+// guest or host.
+type PodcastGuestAppearance struct {
+	FlyfID         *string `json:"flyf_id,omitempty"`
+	PodcastName    *string `json:"podcast_name,omitempty"`
+	EpisodeURL     string  `json:"episode_url"`
+	EpisodeURLHash string  `json:"episode_url_hash"`
+	// Role is the detected role in the episode (e.g. "host", "guest").
+	Role *string `json:"role,omitempty"`
+	// Confidence is the detection confidence (0-1).
+	Confidence          *float64 `json:"confidence,omitempty"`
+	SpeakingTimeSeconds *float64 `json:"speaking_time_seconds,omitempty"`
+	DetectedAt          *string  `json:"detected_at,omitempty"`
+}
+
+// PodcastGuest is a podcast guest or host detected via transcript and
+// speaker analysis.
+type PodcastGuest struct {
+	Name string `json:"name"`
+	// Title is the professional title, when known (e.g. "CEO").
+	Title          *string `json:"title,omitempty"`
+	Organization   *string `json:"organization,omitempty"`
+	BlueskyHandle  *string `json:"bluesky_handle,omitempty"`
+	MastodonHandle *string `json:"mastodon_handle,omitempty"`
+	// Appearances lists episodes this person appeared in, newest first.
+	Appearances []PodcastGuestAppearance `json:"appearances,omitempty"`
+}
+
+// PodcastGuestSearchResponse is the response of Audio.SearchPodcastGuests.
+type PodcastGuestSearchResponse struct {
+	OK     bool           `json:"ok"`
+	Query  string         `json:"query"`
+	Guests []PodcastGuest `json:"guests"`
+	Total  int            `json:"total"`
+}
+
+// PodcastMentionTimestamp is one mention time range within an episode,
+// in seconds.
+type PodcastMentionTimestamp struct {
+	Start float64 `json:"start"`
+	End   float64 `json:"end"`
+}
+
+// PodcastMention is all mentions of one entity within one episode.
+type PodcastMention struct {
+	EpisodeURL     string  `json:"episode_url"`
+	EpisodeURLHash string  `json:"episode_url_hash"`
+	FlyfID         *string `json:"flyf_id,omitempty"`
+	// Entity is the name as spoken/recognized (original casing).
+	Entity string `json:"entity"`
+	// EntityType is "person", "organization", or "location".
+	EntityType        string   `json:"entity_type"`
+	MentionCount      int      `json:"mention_count"`
+	FirstStartSeconds *float64 `json:"first_start_seconds,omitempty"`
+	// Timestamps holds up to 50 mention time ranges per episode.
+	Timestamps []PodcastMentionTimestamp `json:"timestamps,omitempty"`
+	// CreatedAt is when the episode was indexed.
+	CreatedAt *string `json:"created_at,omitempty"`
+}
+
+// PodcastMentionsResponse is the response of Audio.GetPodcastMentions.
+type PodcastMentionsResponse struct {
+	OK bool `json:"ok"`
+	// Entity is the normalized (lowercased) entity name that was matched.
+	Entity     string           `json:"entity"`
+	EntityType *string          `json:"entity_type,omitempty"`
+	FlyfID     *string          `json:"flyf_id,omitempty"`
+	Mentions   []PodcastMention `json:"mentions"`
+	// Total is the number of rows returned (page size, not the global count).
+	Total  int `json:"total"`
+	Limit  int `json:"limit"`
+	Offset int `json:"offset"`
+}
+
+// PodcastSponsorAd is one classified podcast ad placement in one episode.
+type PodcastSponsorAd struct {
+	EpisodeURL     string  `json:"episode_url"`
+	EpisodeURLHash string  `json:"episode_url_hash"`
+	FlyfID         *string `json:"flyf_id,omitempty"`
+	// Company is the advertiser company name.
+	Company string  `json:"company"`
+	Product *string `json:"product,omitempty"`
+	// Category is the advertiser category (e.g. "technology", "finance").
+	Category *string `json:"category,omitempty"`
+	// AdFormat is the ad format (e.g. "host_read", "produced").
+	AdFormat        *string  `json:"ad_format,omitempty"`
+	PromoCode       *string  `json:"promo_code,omitempty"`
+	StartSeconds    *float64 `json:"start_seconds,omitempty"`
+	EndSeconds      *float64 `json:"end_seconds,omitempty"`
+	DurationSeconds *float64 `json:"duration_seconds,omitempty"`
+	// Confidence is the ad detection confidence (0-1).
+	Confidence *float64 `json:"confidence,omitempty"`
+	// AdTextPreview is a preview of the transcribed ad read (up to 1024 chars).
+	AdTextPreview *string `json:"ad_text_preview,omitempty"`
+	ModelVersion  *string `json:"model_version,omitempty"`
+	// CreatedAt is when the ad was detected and classified.
+	CreatedAt *string `json:"created_at,omitempty"`
+}
+
+// PodcastSponsorsResponse is the response of Audio.GetPodcastSponsors.
+type PodcastSponsorsResponse struct {
+	OK bool `json:"ok"`
+	// Company is the normalized (lowercased) company name that was matched.
+	Company        *string            `json:"company,omitempty"`
+	EpisodeURLHash *string            `json:"episode_url_hash,omitempty"`
+	FlyfID         *string            `json:"flyf_id,omitempty"`
+	Sponsors       []PodcastSponsorAd `json:"sponsors"`
+	// Total is the number of rows returned (page size, not the global count).
+	Total  int `json:"total"`
+	Limit  int `json:"limit"`
+	Offset int `json:"offset"`
+}
+
+// PodcastFactCheck is one fact-checked claim from a podcast episode.
+type PodcastFactCheck struct {
+	// ClaimIndex is the position of the claim within the episode's fact
+	// checks (0-based).
+	ClaimIndex int    `json:"claim_index"`
+	ClaimText  string `json:"claim_text"`
+	// ClaimType is the kind of claim (e.g. "statistic", "event", "quote").
+	ClaimType *string `json:"claim_type,omitempty"`
+	// TimestampSeconds is where the claim is made in the episode.
+	TimestampSeconds *float64 `json:"timestamp_seconds,omitempty"`
+	// Verdict is the fact-check verdict (e.g. "verified", "disputed",
+	// "false", "unverifiable").
+	Verdict string `json:"verdict"`
+	// Confidence is the verdict confidence (0-1).
+	Confidence  *float64 `json:"confidence,omitempty"`
+	Explanation *string  `json:"explanation,omitempty"`
+	// Sources holds the citation objects backing the verdict.
+	Sources []map[string]any `json:"sources,omitempty"`
+	// SearchQueries lists the web searches run while checking the claim.
+	SearchQueries []string `json:"search_queries,omitempty"`
+}
+
+// PodcastFactChecksResponse is the response of Audio.GetFactChecks.
+type PodcastFactChecksResponse struct {
+	OK         bool               `json:"ok"`
+	EpisodeURL string             `json:"episode_url"`
+	FactChecks []PodcastFactCheck `json:"fact_checks"`
+	Total      int                `json:"total"`
+	// Summary counts claims per verdict (e.g. verified, disputed).
+	Summary map[string]int `json:"summary,omitempty"`
+	Error   *string        `json:"error,omitempty"`
+}
+
+// PodcastTranslation is a stored transcript translation for one episode and
+// language.
+type PodcastTranslation struct {
+	// SourceLanguage is the detected language of the original transcript.
+	SourceLanguage *string `json:"source_language,omitempty"`
+	TargetLanguage *string `json:"target_language,omitempty"`
+	// TranslatedTranscript is the full translated transcript text.
+	TranslatedTranscript string `json:"translated_transcript"`
+	// TranslatedSegments holds the timestamped translated segments.
+	TranslatedSegments []map[string]any `json:"translated_segments,omitempty"`
+	// AudioURL is the translated TTS audio URL, when audio was generated.
+	AudioURL             *string  `json:"audio_url,omitempty"`
+	AudioDurationSeconds *float64 `json:"audio_duration_seconds,omitempty"`
+	// TTSVoice is the voice used for the translated audio.
+	TTSVoice                *string  `json:"tts_voice,omitempty"`
+	WordCount               *int     `json:"word_count,omitempty"`
+	OriginalDurationSeconds *float64 `json:"original_duration_seconds,omitempty"`
+}
+
+// PodcastTranslationResponse is the response of Audio.GetTranslation.
+type PodcastTranslationResponse struct {
+	OK         bool   `json:"ok"`
+	EpisodeURL string `json:"episode_url"`
+	Language   string `json:"language"`
+	// Translation is nil when no stored translation exists (the endpoint
+	// then returns a 404 API error).
+	Translation *PodcastTranslation `json:"translation,omitempty"`
+	Error       *string             `json:"error,omitempty"`
+}
+
+// PodcastCatchUpResponse is the response of Audio.GetCatchUp.
+type PodcastCatchUpResponse struct {
+	OK         bool   `json:"ok"`
+	EpisodeURL string `json:"episode_url"`
+	// TimestampSeconds echoes the requested playback position.
+	TimestampSeconds float64 `json:"timestamp_seconds"`
+	// Summary is a prose summary of everything before the timestamp.
+	Summary       *string  `json:"summary,omitempty"`
+	TopicsCovered []string `json:"topics_covered"`
+	KeyPoints     []string `json:"key_points"`
+	// MissedDurationSeconds is how much episode time the summary covers.
+	MissedDurationSeconds *float64 `json:"missed_duration_seconds,omitempty"`
+	Error                 *string  `json:"error,omitempty"`
+}
+
+// PodcastTopicMatch is one transcript passage matching a skip-to-topic query.
+type PodcastTopicMatch struct {
+	StartSeconds *float64 `json:"start_seconds,omitempty"`
+	EndSeconds   *float64 `json:"end_seconds,omitempty"`
+	// TextPreview previews the matching transcript passage.
+	TextPreview *string `json:"text_preview,omitempty"`
+	// Score is the relevance score (higher is more relevant).
+	Score *float64 `json:"score,omitempty"`
+}
+
+// PodcastTopicSeekResponse is the response of Audio.SkipToTopic.
+type PodcastTopicSeekResponse struct {
+	OK         bool   `json:"ok"`
+	EpisodeURL string `json:"episode_url"`
+	Topic      string `json:"topic"`
+	// Matches come back best first; empty with OK=true means nothing scored
+	// above the relevance floor.
+	Matches []PodcastTopicMatch `json:"matches"`
+	Total   int                 `json:"total"`
+	Error   *string             `json:"error,omitempty"`
+}

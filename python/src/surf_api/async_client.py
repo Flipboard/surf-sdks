@@ -27,6 +27,7 @@ except ImportError:
         "httpx is required for the async client. Install with: pip install surf-api[async]"
     )
 
+from .client import episode_url_sha1
 from .exceptions import (
     SurfAPIError,
     SurfAuthError,
@@ -644,6 +645,94 @@ class _AsyncAudioAPI:
 
     async def get_transcript(self, episode_url: str) -> dict:
         return await self._c._get("/audio/transcript", {"episode_url": episode_url})
+
+    async def get_show_notes(self, episode_url: str, language: str = None) -> dict:
+        """Structured, AI-generated show notes for a transcribed episode.
+        Raises SurfNotFoundError if notes have not been generated yet."""
+        return await self._c._get("/audio/transcripts/show-notes",
+                                  {"episode_url": episode_url, "language": language})
+
+    # Podcast intelligence
+    async def search_podcast_episodes(self, query: str, flyf_id: str = None,
+                                      limit: int = 20) -> dict:
+        """Semantic search across transcribed podcast episodes (embedding
+        similarity over transcript chunks). Results carry the matching chunk's
+        time range, a text preview, and a similarity score (0-1).
+        `flyf_id` restricts to one podcast; `limit` default 20, max 100."""
+        return await self._c._get("/audio/episodes/search",
+                                  {"q": query, "flyf_id": flyf_id, "limit": limit})
+
+    async def search_podcast_guests(self, query: str, limit: int = 20) -> dict:
+        """Search podcast guests/hosts by name (fuzzy). Matches include profile
+        details and detected episode appearances with role and speaking time."""
+        return await self._c._get("/audio/guests/search", {"q": query, "limit": limit})
+
+    async def get_podcast_mentions(self, entity: str, entity_type: str = None,
+                                   flyf_id: str = None, limit: int = 20,
+                                   offset: int = 0) -> dict:
+        """Find episodes mentioning a person, organization, or location
+        (case-insensitive NER over transcripts). Rows include mention counts
+        and up to 50 in-episode timestamps; newest first, limit/offset paging.
+        `entity_type`: 'person', 'organization', or 'location'."""
+        return await self._c._get("/audio/mentions", {
+            "entity": entity, "entity_type": entity_type, "flyf_id": flyf_id,
+            "limit": limit, "offset": offset,
+        })
+
+    async def get_podcast_sponsors(self, company: str = None,
+                                   episode_url_hash: str = None,
+                                   episode_url: str = None, flyf_id: str = None,
+                                   limit: int = 20, offset: int = 0) -> dict:
+        """Query the podcast sponsor/ads database. Requires `company` or an
+        episode (`episode_url_hash` = SHA1 hex of the full audio URL, or pass
+        `episode_url` and the SDK hashes it — see surf_api.episode_url_sha1)."""
+        if episode_url and not episode_url_hash:
+            episode_url_hash = episode_url_sha1(episode_url)
+        if not company and not episode_url_hash:
+            raise ValueError(
+                "provide at least one of 'company', 'episode_url_hash', or 'episode_url'")
+        return await self._c._get("/audio/sponsors", {
+            "company": company, "episode_url_hash": episode_url_hash,
+            "flyf_id": flyf_id, "limit": limit, "offset": offset,
+        })
+
+    # Podcast intelligence — phase 4 (per-episode, retrieval only)
+    async def get_fact_checks(self, episode_url: str) -> dict:
+        """Stored fact-check results for an episode, in claim order (verdict,
+        confidence, explanation, sources per claim; summary counts per
+        verdict). Retrieval only; 404 when the episode has no fact checks."""
+        return await self._c._get("/audio/fact-checks",
+                                  {"episode_url": episode_url})
+
+    async def get_translation(self, episode_url: str, language: str) -> dict:
+        """Stored transcript translation for an episode (full transcript,
+        timestamped segments, TTS audio when generated). Retrieval only —
+        never translates on demand; 404 when no translation exists for the
+        language (e.g. 'es', 'pt-BR')."""
+        return await self._c._get("/audio/translations",
+                                  {"episode_url": episode_url,
+                                   "language": language})
+
+    async def get_catch_up(self, episode_url: str,
+                           timestamp_seconds: float) -> dict:
+        """"What did I miss?" summary of an episode up to a playback position
+        (seconds, 0-86400): summary, topics_covered, key_points. Cached
+        transcript only — never triggers transcription; 404 when the episode
+        has no transcript yet."""
+        return await self._c._get("/audio/catch-up",
+                                  {"episode_url": episode_url,
+                                   "timestamp": timestamp_seconds})
+
+    async def skip_to_topic(self, episode_url: str, topic: str,
+                            limit: int = 5) -> dict:
+        """Semantic "jump to the part about X" within one episode. Matches
+        come back best first with start/end seconds, a text preview, and a
+        relevance score; empty matches with ok=true means nothing scored above
+        the relevance floor. Cached transcript only; 404 when the episode has
+        no transcript yet. limit default 5, max 20."""
+        return await self._c._get("/audio/skip-to-topic",
+                                  {"episode_url": episode_url, "topic": topic,
+                                   "limit": limit})
 
     async def get_daily_quiz(self) -> dict:
         return await self._c._get("/audio/quiz/daily")

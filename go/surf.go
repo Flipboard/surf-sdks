@@ -10,6 +10,8 @@ package surf
 
 import (
 	"bytes"
+	"crypto/sha1"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -934,6 +936,181 @@ func (a *AudioAPI) GetBriefing(id string) (json.RawMessage, error) {
 func (a *AudioAPI) GetTranscript(episodeUrl string) (json.RawMessage, error) {
 	return a.c.get("/audio/transcript", url.Values{"episode_url": {episodeUrl}})
 }
+
+// GetShowNotes returns structured, AI-generated show notes for a transcribed
+// episode (read:audio): summary, topics, people, organizations, timestamped
+// outline, key takeaways, and chapters, plus a signed URL for the raw
+// show-notes JSON. Returns a 404 API error if notes haven't been generated for
+// the episode yet. language ("" to omit) requests translated notes (e.g. "es").
+func (a *AudioAPI) GetShowNotes(episodeURL, language string) (json.RawMessage, error) {
+	v := url.Values{"episode_url": {episodeURL}}
+	if language != "" {
+		v.Set("language", language)
+	}
+	return a.c.get("/audio/transcripts/show-notes", v)
+}
+
+// Podcast intelligence
+
+// EpisodeURLHash returns the SHA1 hex of a full episode audio URL.
+// episode_url_hash is the episode's stable ID across the podcast intelligence
+// endpoints (episode search results, guest appearances, mentions, and the
+// sponsor/ads database).
+func EpisodeURLHash(episodeURL string) string {
+	sum := sha1.Sum([]byte(episodeURL))
+	return hex.EncodeToString(sum[:])
+}
+
+// SearchPodcastEpisodes performs a semantic search across transcribed podcast
+// episodes (read:audio). Episodes matching the natural-language query are found
+// via embedding similarity over transcript chunks (no keyword overlap
+// required); each result carries the matching chunk's time range, a text
+// preview, and a similarity score (0-1), plus episode_url_hash (SHA1 hex of the
+// full audio URL — see EpisodeURLHash). flyfID ("" to omit) restricts to one
+// podcast (SHA1 hex of the full RSS feed URL); limit <= 0 uses the server
+// default of 20 (max 100). PodcastEpisodeSearchResponse is available as a
+// decode target.
+func (a *AudioAPI) SearchPodcastEpisodes(q, flyfID string, limit int) (json.RawMessage, error) {
+	v := url.Values{"q": {q}}
+	if flyfID != "" {
+		v.Set("flyf_id", flyfID)
+	}
+	if limit > 0 {
+		v.Set("limit", strconv.Itoa(limit))
+	}
+	return a.c.get("/audio/episodes/search", v)
+}
+
+// SearchPodcastGuests searches podcast guests and hosts by name with fuzzy
+// matching (read:audio). Each match includes known profile details (title,
+// organization, social handles) and detected episode appearances with role,
+// confidence, and speaking time. limit <= 0 uses the server default of 20
+// (max 100). PodcastGuestSearchResponse is available as a decode target.
+func (a *AudioAPI) SearchPodcastGuests(q string, limit int) (json.RawMessage, error) {
+	v := url.Values{"q": {q}}
+	if limit > 0 {
+		v.Set("limit", strconv.Itoa(limit))
+	}
+	return a.c.get("/audio/guests/search", v)
+}
+
+// GetPodcastMentions finds podcast episodes mentioning a person, organization,
+// or location (read:audio; case-insensitive NER over transcripts). Each row
+// covers one episode with the mention count, first mention time, and up to 50
+// mention timestamps ({start, end} seconds) for deep-linking; newest episodes
+// first. entityType ("" to omit) is one of "person", "organization",
+// "location"; flyfID ("" to omit) restricts to one podcast; limit <= 0 uses the
+// server default of 20 (max 100); offset paginates (max 10000).
+// PodcastMentionsResponse is available as a decode target.
+func (a *AudioAPI) GetPodcastMentions(entity, entityType, flyfID string, limit, offset int) (json.RawMessage, error) {
+	v := url.Values{"entity": {entity}}
+	if entityType != "" {
+		v.Set("entity_type", entityType)
+	}
+	if flyfID != "" {
+		v.Set("flyf_id", flyfID)
+	}
+	if limit > 0 {
+		v.Set("limit", strconv.Itoa(limit))
+	}
+	if offset > 0 {
+		v.Set("offset", strconv.Itoa(offset))
+	}
+	return a.c.get("/audio/mentions", v)
+}
+
+// GetPodcastSponsors queries the podcast sponsor/ads database (read:audio).
+// Each row is one detected ad placement in one episode: advertiser, product,
+// category, format, promo code, exact time range, and a text preview of the ad
+// read. Search by company (case-insensitive, newest placements first) or list
+// all ads in a single episode with episodeURLHash (SHA1 hex of the full audio
+// URL — use EpisodeURLHash to compute it from the URL); at least one of the two
+// is required ("" to omit) — combine them to check whether a company advertised
+// in a specific episode. flyfID ("" to omit) restricts to one podcast;
+// limit <= 0 uses the server default of 20 (max 100); offset paginates
+// (max 10000). PodcastSponsorsResponse is available as a decode target.
+func (a *AudioAPI) GetPodcastSponsors(company, episodeURLHash, flyfID string, limit, offset int) (json.RawMessage, error) {
+	if company == "" && episodeURLHash == "" {
+		return nil, fmt.Errorf("surf: provide at least one of company or episodeURLHash")
+	}
+	v := url.Values{}
+	if company != "" {
+		v.Set("company", company)
+	}
+	if episodeURLHash != "" {
+		v.Set("episode_url_hash", episodeURLHash)
+	}
+	if flyfID != "" {
+		v.Set("flyf_id", flyfID)
+	}
+	if limit > 0 {
+		v.Set("limit", strconv.Itoa(limit))
+	}
+	if offset > 0 {
+		v.Set("offset", strconv.Itoa(offset))
+	}
+	return a.c.get("/audio/sponsors", v)
+}
+
+// Podcast intelligence — phase 4 (per-episode, retrieval only)
+
+// GetFactChecks returns stored fact-check results for an episode, in claim
+// order (read:audio). Each claim carries the claim text/type, where it's made
+// in the episode, a verdict with confidence and explanation, plus the sources
+// and search queries behind the verdict; the summary object counts claims per
+// verdict. Retrieval only — never triggers a new fact-check run. Returns a
+// 404 API error when the episode has no fact checks.
+// PodcastFactChecksResponse is available as a decode target.
+func (a *AudioAPI) GetFactChecks(episodeURL string) (json.RawMessage, error) {
+	return a.c.get("/audio/fact-checks", url.Values{"episode_url": {episodeURL}})
+}
+
+// GetTranslation returns a stored transcript translation for an episode in
+// the given language (e.g. "es", "pt-BR"; read:audio): the full translated
+// transcript, timestamped translated segments, and — when TTS was generated —
+// a translated audio URL with duration and voice. Retrieval only — never
+// translates on demand. Returns a 404 API error when no stored translation
+// exists for the language. PodcastTranslationResponse is available as a
+// decode target.
+func (a *AudioAPI) GetTranslation(episodeURL, language string) (json.RawMessage, error) {
+	return a.c.get("/audio/translations", url.Values{
+		"episode_url": {episodeURL},
+		"language":    {language},
+	})
+}
+
+// GetCatchUp returns a "what did I miss?" summary of an episode up to a
+// playback position in seconds (0-86400; read:audio): a prose summary plus
+// topics covered, key points, and the covered duration. Works from the cached
+// transcript only and never triggers transcription — returns a 404 API error
+// (error "transcript not available") when the episode has no transcript yet.
+// PodcastCatchUpResponse is available as a decode target.
+func (a *AudioAPI) GetCatchUp(episodeURL string, timestampSeconds float64) (json.RawMessage, error) {
+	return a.c.get("/audio/catch-up", url.Values{
+		"episode_url": {episodeURL},
+		"timestamp":   {strconv.FormatFloat(timestampSeconds, 'f', -1, 64)},
+	})
+}
+
+// SkipToTopic performs a semantic "jump to the part about X" within one
+// episode (read:audio). Matches come back best first, each with start/end
+// seconds for deep-linking, a text preview, and a relevance score; an empty
+// matches list with ok=true means nothing scored above the relevance floor.
+// Works from the cached transcript only and never triggers transcription —
+// returns a 404 API error when the episode has no transcript yet. limit <= 0
+// uses the server default of 5 (max 20). PodcastTopicSeekResponse is
+// available as a decode target.
+func (a *AudioAPI) SkipToTopic(episodeURL, topic string, limit int) (json.RawMessage, error) {
+	v := url.Values{
+		"episode_url": {episodeURL},
+		"topic":       {topic},
+	}
+	if limit > 0 {
+		v.Set("limit", strconv.Itoa(limit))
+	}
+	return a.c.get("/audio/skip-to-topic", v)
+}
+
 func (a *AudioAPI) GetDailyQuiz() (json.RawMessage, error) { return a.c.get("/audio/quiz/daily", nil) }
 func (a *AudioAPI) TextToSpeech(text, voice string) ([]byte, error) {
 	if voice == "" {
