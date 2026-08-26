@@ -828,6 +828,186 @@ class _AudioAPI:
         """Get a signed URL for an episode transcript."""
         return self._c._get("/audio/transcript", {"episode_url": episode_url})
 
+    def get_show_notes(self, episode_url: str, language: str = None) -> dict:
+        """Get structured, AI-generated show notes for a transcribed episode.
+
+        Returns summary, topics, people, organizations, a timestamped outline,
+        key takeaways, and chapters, plus a ``signed_url`` for the raw
+        show-notes JSON. Raises :class:`SurfNotFoundError` if show notes have
+        not been generated for the episode yet.
+
+        Args:
+            episode_url: The episode's audio/enclosure URL.
+            language: Optional language code (e.g. ``'en'``, ``'es'``) for
+                translated show notes; omit for the original language.
+        """
+        return self._c._get("/audio/transcripts/show-notes",
+                            {"episode_url": episode_url, "language": language})
+
+    # Podcast intelligence
+    def search_podcast_episodes(self, query: str, flyf_id: str = None,
+                                limit: int = 20) -> dict:
+        """Semantic search across transcribed podcast episodes.
+
+        Finds episodes matching a natural-language ``query`` using embedding
+        similarity over transcript chunks (no keyword overlap required). Each
+        result identifies the matching chunk (``chunk_start_seconds`` /
+        ``chunk_end_seconds``) with a text ``preview`` and is ordered by
+        similarity ``score`` (0-1). Results carry ``episode_url_hash`` (SHA1
+        hex of the full audio URL — the episode's stable ID across the audio
+        APIs; see :func:`episode_url_sha1`).
+
+        Args:
+            query: Natural language search query (max 512 chars).
+            flyf_id: Restrict to one podcast (SHA1 hex of the full RSS feed URL).
+            limit: Maximum results (default 20, max 100).
+        """
+        return self._c._get("/audio/episodes/search",
+                            {"q": query, "flyf_id": flyf_id, "limit": limit})
+
+    def search_podcast_guests(self, query: str, limit: int = 20) -> dict:
+        """Search podcast guests and hosts by name (fuzzy matching).
+
+        Each match includes the person's known profile details (title,
+        organization, social handles) and their detected episode
+        ``appearances`` with role, confidence, and speaking time.
+
+        Args:
+            query: Guest name or partial name (max 512 chars).
+            limit: Maximum guests (default 20, max 100).
+        """
+        return self._c._get("/audio/guests/search", {"q": query, "limit": limit})
+
+    def get_podcast_mentions(self, entity: str, entity_type: str = None,
+                             flyf_id: str = None, limit: int = 20,
+                             offset: int = 0) -> dict:
+        """Find podcast episodes mentioning a person, organization, or location.
+
+        Backed by named-entity recognition over episode transcripts; matching
+        is case-insensitive. Each row covers one episode and includes the
+        mention count, the first mention time, and up to 50 mention
+        ``timestamps`` (``{start, end}`` in seconds) for deep-linking.
+        Newest episodes first; paginate with ``limit``/``offset``.
+
+        Args:
+            entity: Entity name to look up (case-insensitive, max 512 chars).
+            entity_type: Optional filter: 'person', 'organization', or 'location'.
+            flyf_id: Restrict to one podcast (SHA1 hex of the full RSS feed URL).
+            limit: Maximum rows (default 20, max 100).
+            offset: Pagination offset (max 10000).
+        """
+        return self._c._get("/audio/mentions", {
+            "entity": entity, "entity_type": entity_type, "flyf_id": flyf_id,
+            "limit": limit, "offset": offset,
+        })
+
+    def get_podcast_sponsors(self, company: str = None,
+                             episode_url_hash: str = None,
+                             episode_url: str = None, flyf_id: str = None,
+                             limit: int = 20, offset: int = 0) -> dict:
+        """Query the podcast sponsor/ads database.
+
+        Each row is one detected ad placement in one episode: advertiser,
+        product, category, format, promo code, exact time range, and a text
+        preview of the ad read. Search by ``company`` (case-insensitive,
+        newest placements first) or list all ads in a single episode via
+        ``episode_url_hash`` (SHA1 hex of the full audio URL) or the
+        convenience ``episode_url`` (hashed for you); at least one of the
+        three is required — combine company + episode to check whether a
+        company advertised in a specific episode.
+
+        Args:
+            company: Sponsor company name (case-insensitive, max 512 chars).
+            episode_url_hash: SHA1 hex (40 chars) of the episode's full audio URL.
+            episode_url: The episode's full audio URL; the SDK hashes it into
+                ``episode_url_hash`` (ignored when the hash is passed directly).
+            flyf_id: Restrict to one podcast (SHA1 hex of the full RSS feed URL).
+            limit: Maximum rows (default 20, max 100).
+            offset: Pagination offset (max 10000).
+        """
+        if episode_url and not episode_url_hash:
+            episode_url_hash = episode_url_sha1(episode_url)
+        if not company and not episode_url_hash:
+            raise ValueError(
+                "provide at least one of 'company', 'episode_url_hash', or 'episode_url'")
+        return self._c._get("/audio/sponsors", {
+            "company": company, "episode_url_hash": episode_url_hash,
+            "flyf_id": flyf_id, "limit": limit, "offset": offset,
+        })
+
+    # Podcast intelligence — phase 4 (per-episode, retrieval only)
+    def get_fact_checks(self, episode_url: str) -> dict:
+        """Get stored fact-check results for an episode, in claim order.
+
+        Each claim carries the claim text/type, where it's made in the episode
+        (``timestamp_seconds``), a ``verdict`` with ``confidence`` and
+        ``explanation``, plus the ``sources`` and ``search_queries`` behind
+        the verdict; the ``summary`` object counts claims per verdict.
+        Retrieval only — never triggers a new fact-check run. Raises
+        :class:`SurfNotFoundError` when the episode has no fact checks.
+
+        Args:
+            episode_url: The episode's full audio/enclosure URL.
+        """
+        return self._c._get("/audio/fact-checks", {"episode_url": episode_url})
+
+    def get_translation(self, episode_url: str, language: str) -> dict:
+        """Get a stored transcript translation for an episode.
+
+        Returns the full ``translated_transcript``, timestamped
+        ``translated_segments``, and — when TTS was generated — a translated
+        ``audio_url`` with duration and voice, under the ``translation`` key.
+        Retrieval only — never translates on demand. Raises
+        :class:`SurfNotFoundError` when no stored translation exists for the
+        language.
+
+        Args:
+            episode_url: The episode's full audio/enclosure URL.
+            language: Target language code (e.g. ``'es'``, ``'pt-BR'``).
+        """
+        return self._c._get("/audio/translations",
+                            {"episode_url": episode_url, "language": language})
+
+    def get_catch_up(self, episode_url: str, timestamp_seconds: float) -> dict:
+        """"What did I miss?" — summarize an episode up to a playback position.
+
+        Returns a prose ``summary`` plus ``topics_covered``, ``key_points``,
+        and ``missed_duration_seconds`` for everything before the timestamp.
+        Works from the episode's cached transcript only and never triggers
+        transcription — raises :class:`SurfNotFoundError` (error
+        ``"transcript not available"``) when the episode has no transcript
+        yet.
+
+        Args:
+            episode_url: The episode's full audio/enclosure URL.
+            timestamp_seconds: Playback position to catch up to, in seconds
+                (0-86400).
+        """
+        return self._c._get("/audio/catch-up",
+                            {"episode_url": episode_url,
+                             "timestamp": timestamp_seconds})
+
+    def skip_to_topic(self, episode_url: str, topic: str, limit: int = 5) -> dict:
+        """Semantic "jump to the part about X" within one episode.
+
+        Finds the transcript passages most relevant to ``topic`` via embedding
+        similarity (no keyword overlap required). ``matches`` come back best
+        first, each with ``start_seconds``/``end_seconds`` for deep-linking, a
+        ``text_preview``, and a relevance ``score``; an empty ``matches`` list
+        with ``ok: true`` means nothing in the episode scored above the
+        relevance floor. Works from the cached transcript only and never
+        triggers transcription — raises :class:`SurfNotFoundError` when the
+        episode has no transcript yet.
+
+        Args:
+            episode_url: The episode's full audio/enclosure URL.
+            topic: Topic/subject to jump to, in natural language (max 512 chars).
+            limit: Maximum matches (default 5, max 20).
+        """
+        return self._c._get("/audio/skip-to-topic",
+                            {"episode_url": episode_url, "topic": topic,
+                             "limit": limit})
+
     # Quiz
     def get_daily_quiz(self) -> dict:
         """Get the daily quiz questions."""
@@ -1444,6 +1624,17 @@ class _DiagnosticsAPI:
     def revoke_bundle(self, token: str) -> dict:
         """Revoke a bundle you minted before it expires."""
         return self._c._dp_delete(f"/debug-bundle/{quote(token, safe='')}")
+
+
+def episode_url_sha1(episode_url: str) -> str:
+    """SHA1 hex of a full episode audio URL.
+
+    ``episode_url_hash`` is the episode's stable ID across the podcast
+    intelligence endpoints (episode search results, guest appearances,
+    mentions, and the sponsor/ads database).
+    """
+    import hashlib
+    return hashlib.sha1(episode_url.encode("utf-8")).hexdigest()
 
 
 def _clean(params: Optional[dict]) -> Optional[dict]:

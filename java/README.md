@@ -188,6 +188,50 @@ Map<String, Object> briefing = client.audio.getBriefing();
 byte[] mp3 = client.audio.textToSpeech("Hello from Surf");
 ```
 
+## Podcast Intelligence
+
+Search and mine transcribed podcasts (`read:audio` scope). Episodes are identified
+by `episode_url_hash` — the SHA1 hex of the full audio URL
+(`AudioApi.episodeUrlHash(url)` computes it). Coverage starts with a pilot subset
+of podcasts and expands over time.
+
+```java
+// Semantic episode search — natural language over transcript chunks
+Map<String, Object> hits = client.audio.searchPodcastEpisodes("episodes about AI agents");
+
+// Guest search — fuzzy name match with detected appearances
+Map<String, Object> guests = client.audio.searchPodcastGuests("Sam Altman");
+
+// Entity mentions — who/what gets talked about, with in-episode timestamps
+Map<String, Object> mentions = client.audio.getPodcastMentions("Anthropic", "organization", null, 20, 0);
+
+// Sponsor/ad intelligence — by company, or all ads in one episode
+Map<String, Object> ads = client.audio.getPodcastSponsorsByCompany("Squarespace");
+Map<String, Object> episodeAds = client.audio.getPodcastSponsorsForEpisodeUrl(
+        "https://cdn.example.com/ep-142.mp3"); // hashed for you; a precomputed
+        // hash works too: getPodcastSponsorsForEpisode(episodeUrlHash)
+
+// Structured show notes (summary, topics, outline, takeaways, chapters)
+Map<String, Object> notes = client.audio.getShowNotes("https://cdn.example.com/ep-142.mp3");
+
+// Fact checks — stored verdicts per claim, with sources (404 if none yet)
+Map<String, Object> checks = client.audio.getFactChecks("https://cdn.example.com/ep-142.mp3");
+
+// Stored transcript translation (retrieval only — never translates on demand)
+Map<String, Object> spanish = client.audio.getTranslation("https://cdn.example.com/ep-142.mp3", "es");
+
+// "What did I miss?" — summary of everything before a playback position
+Map<String, Object> recap = client.audio.getCatchUp("https://cdn.example.com/ep-142.mp3", 1830.5);
+
+// Semantic skip-to-topic — jump to the part about X (best matches first)
+Map<String, Object> spots = client.audio.skipToTopic("https://cdn.example.com/ep-142.mp3", "the housing market");
+```
+
+The phase-4 calls (`getFactChecks`, `getTranslation`, `getCatchUp`, `skipToTopic`)
+are retrieval only and take the raw episode URL (no hashing). Catch-up and
+skip-to-topic work from the cached transcript and throw `SurfNotFoundError`
+until the episode has one.
+
 ## Longform (standard.site / Leaflet)
 
 Documents and publications are addressed by AT-URI — pass the raw URI, the SDK

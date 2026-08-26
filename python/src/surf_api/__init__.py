@@ -1,6 +1,13 @@
 """Surf API Python SDK — programmatic access to the Surf social platform."""
 
-from .client import SurfClient, SurfRTBClient, FeedTheme, NewFeedOperator, FeedFilter
+from .client import (
+    SurfClient,
+    SurfRTBClient,
+    FeedTheme,
+    NewFeedOperator,
+    FeedFilter,
+    episode_url_sha1,
+)
 from .models import (
     Post,
     DocumentSummary,
@@ -17,6 +24,14 @@ from .models import (
     ModerationResult,
     ConnectedApp,
     ProfileLink,
+    PodcastEpisodeSearchResult,
+    PodcastGuest,
+    PodcastGuestAppearance,
+    PodcastMention,
+    PodcastSponsorAd,
+    PodcastFactCheck,
+    PodcastTranslation,
+    PodcastTopicMatch,
 )
 from .exceptions import (
     SurfAPIError,
@@ -59,6 +74,15 @@ __all__ = [
     "ModerationResult",
     "ConnectedApp",
     "ProfileLink",
+    "PodcastEpisodeSearchResult",
+    "PodcastGuest",
+    "PodcastGuestAppearance",
+    "PodcastMention",
+    "PodcastSponsorAd",
+    "PodcastFactCheck",
+    "PodcastTranslation",
+    "PodcastTopicMatch",
+    "episode_url_sha1",
 ]
 
 
