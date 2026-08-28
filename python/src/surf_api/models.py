@@ -177,8 +177,16 @@ class PostSafety:
 
     @classmethod
     def from_dict(cls, d: Optional[dict]) -> Optional[PostSafety]:
-        if not d:
+        # Only None means the field was absent. A verdict that is present but empty or
+        # partial ({}, or one missing keys) gets the documented unknown/none defaults,
+        # so "the server sent no verdict at all" stays distinguishable from "the server
+        # sent a verdict and it carries no signal" — the distinction this model exists
+        # for. A non-dict payload is unreadable rather than absent, so it degrades to
+        # unknown/none too instead of raising in the middle of a response parse.
+        if d is None:
             return None
+        if not isinstance(d, dict):
+            return cls()
         return cls(
             rating=d.get("rating") or "unknown",
             labels=d.get("labels"),
