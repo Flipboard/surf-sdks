@@ -150,6 +150,43 @@ class DocumentSummary:
 
 
 @dataclass
+class PostSafety:
+    """Graded content-safety verdict on a post.
+
+    Two orthogonal axes: an ordinal ``rating`` for gating, and a lossless ``labels``
+    array carrying Bluesky's own vocabulary verbatim, plus ``source`` for provenance.
+
+    ``rating`` is ``"explicit"`` (pornographic or graphic), ``"suggestive"``
+    (non-pornographic nudity, less-intense sexual, drawn/AI suggestive), ``"safe"``
+    (affirmatively cleared by a classifier) or ``"unknown"``. ``"unknown"`` is the
+    default and its own tier — it does NOT mean safe, and for un-labelled sources it
+    is most of the pool. ``safety=sfw`` on the request drops explicit and suggestive
+    server-side but keeps unknown; a strict client drops unknown itself using this.
+
+    ``labels`` holds ``porn``, ``sexual``, ``nudity``, ``graphic-media``,
+    ``sexual-figurative``, ``bot`` and any future labeler value (open vocabulary —
+    unrecognized values are carried, not dropped, and carry no rating weight).
+
+    ``source`` is ``"self-label"`` (author-applied, including a Mastodon content
+    warning), ``"bsky-moderation"`` (a Bluesky labeler), ``"flipboard-detection"``
+    (our own classifier) or ``"none"`` (no signal, pairs with ``"unknown"``).
+    """
+    rating: str = "unknown"
+    labels: Optional[List[str]] = None
+    source: str = "none"
+
+    @classmethod
+    def from_dict(cls, d: Optional[dict]) -> Optional[PostSafety]:
+        if not d:
+            return None
+        return cls(
+            rating=d.get("rating") or "unknown",
+            labels=d.get("labels"),
+            source=d.get("source") or "none",
+        )
+
+
+@dataclass
 class Post:
     """A post/status from the Surf API (Mastodon-compatible)."""
     id: str = ""
@@ -179,6 +216,7 @@ class Post:
     paywall: Optional[bool] = None
     orientation: Optional[str] = None
     document: Optional[DocumentSummary] = None
+    safety: Optional[PostSafety] = None
 
     @classmethod
     def from_dict(cls, d: Optional[dict]) -> Optional[Post]:
@@ -215,6 +253,7 @@ class Post:
             paywall=d.get("paywall"),
             orientation=d.get("orientation"),
             document=DocumentSummary.from_dict(d.get("document")),
+            safety=PostSafety.from_dict(d.get("safety")),
         )
 
     @classmethod

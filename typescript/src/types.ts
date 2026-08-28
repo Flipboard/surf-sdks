@@ -113,6 +113,30 @@ export interface MediaAttachment {
   description?: string;
 }
 
+/**
+ * Graded content-safety verdict on a post: an ordinal tier for gating plus the
+ * lossless Bluesky label vocabulary and the provenance behind it.
+ */
+export interface PostSafety {
+  /**
+   * Maturity tier. `explicit` = pornographic or graphic; `suggestive` =
+   * non-pornographic nudity, less-intense sexual, drawn/AI suggestive; `safe` =
+   * affirmatively cleared by a classifier; `unknown` = no trusted signal. `unknown`
+   * is the default and its own tier — it does NOT mean safe, and for un-labelled
+   * sources it is most of the pool. `safety: 'sfw'` on the request drops explicit and
+   * suggestive server-side but keeps unknown; drop unknown client-side for a strict policy.
+   */
+  rating: 'safe' | 'suggestive' | 'explicit' | 'unknown' | (string & {});
+  /**
+   * Bluesky's own label values, verbatim (`porn`, `sexual`, `nudity`, `graphic-media`,
+   * `sexual-figurative`, `bot`, ...). Open vocabulary: an unrecognized labeler value is
+   * carried, not dropped, and carries no rating weight. Absent when nothing was observed.
+   */
+  labels?: string[];
+  /** What produced the verdict; `none` pairs with rating `unknown`. */
+  source: 'self-label' | 'bsky-moderation' | 'flipboard-detection' | 'none' | (string & {});
+}
+
 /** A post/status from the Surf API. */
 export interface Post {
   id: string;
@@ -144,6 +168,11 @@ export interface Post {
   orientation?: string;
   /** Longform document summary, present when the post links to a standard.site / Leaflet document. */
   document?: DocumentSummary;
+  /**
+   * Graded content-safety verdict. Prefer this over `sensitive`: it distinguishes
+   * "no signal" (`unknown`) from "checked and clean" (`safe`), which the boolean cannot.
+   */
+  safety?: PostSafety;
 }
 
 /** URL resolution result. */
