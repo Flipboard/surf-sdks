@@ -1,9 +1,9 @@
 """Unit tests for the graded content-safety verdict on Post — no live API required.
 
-Covers PostSafety parsing off an API post: the field names REST/MCP/SDKs share, the
-open label vocabulary, and the defaults, which must never turn "no signal" into
-"checked and clean".
-See services/specs/brand_safety/CONTENT_SAFETY_CLASSIFICATION.md sections 2 and 7.
+Covers PostSafety parsing off an API post: the open label vocabulary (an unrecognized
+value is carried, not dropped), the defaults, which must never turn "no signal" into
+"checked and clean", and the absent-vs-empty distinction — only a missing field parses
+to None, while a verdict the server actually sent keeps its unknown/none defaults.
 """
 import os
 import sys

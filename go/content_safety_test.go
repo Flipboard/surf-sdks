@@ -5,10 +5,10 @@ import (
 	"testing"
 )
 
-// The graded content-safety verdict on a Post: field names shared with REST/MCP/the
-// other SDKs, the open label vocabulary, and defaults that must never turn "no signal"
-// into "checked and clean".
-// See services/specs/brand_safety/CONTENT_SAFETY_CLASSIFICATION.md sections 2 and 7.
+// The graded content-safety verdict on a Post: the open label vocabulary (an
+// unrecognized value is carried, not dropped), rating/source surviving a re-marshal so
+// a consumer never has to tell "field missing" from "no signal", and defaults that must
+// never turn "no signal" into "checked and clean".
 
 func TestPostSafetyDecodesGradedVerdict(t *testing.T) {
 	var post Post
