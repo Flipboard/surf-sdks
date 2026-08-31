@@ -29,6 +29,32 @@ type Post struct {
 	Paywall            *bool             `json:"paywall,omitempty"`
 	Orientation        *string           `json:"orientation,omitempty"`
 	Document           *PostDocument     `json:"document,omitempty"`
+	Safety             *PostSafety       `json:"safety,omitempty"`
+}
+
+// PostSafety is the graded content-safety verdict on a Post: an ordinal tier for
+// gating plus the lossless Bluesky label vocabulary and the provenance behind it.
+//
+// Rating is "explicit" (pornographic or graphic), "suggestive" (non-pornographic
+// nudity, less-intense sexual, drawn/AI suggestive), "safe" (affirmatively cleared by
+// a classifier) or "unknown". "unknown" is the default and its own tier — it does NOT
+// mean safe, and for un-labelled sources it is most of the pool. A request with
+// safety=sfw drops explicit and suggestive server-side but keeps unknown; drop unknown
+// client-side for a strict policy.
+//
+// Labels carries Bluesky's own values verbatim ("porn", "sexual", "nudity",
+// "graphic-media", "sexual-figurative", "bot", ...). The vocabulary is open: an
+// unrecognized labeler value is carried, not dropped, and carries no rating weight.
+//
+// Source is "self-label" (author-applied, including a Mastodon content warning),
+// "bsky-moderation" (a Bluesky labeler), "flipboard-detection" (our own classifier) or
+// "none" (no signal, pairs with rating "unknown").
+//
+// Prefer this over Post.Sensitive: it distinguishes "no signal" from "checked and clean".
+type PostSafety struct {
+	Rating string   `json:"rating"`
+	Labels []string `json:"labels,omitempty"`
+	Source string   `json:"source"`
 }
 
 // PostDocument is the optional longform-document summary attached to a Post
