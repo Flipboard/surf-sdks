@@ -11,6 +11,7 @@ from .client import (
 from .models import (
     Post,
     DocumentSummary,
+    PostSafety,
     FeedMeta,
     PostAccount,
     Card,
@@ -63,6 +64,7 @@ __all__ = [
     "generate_pkce",
     "Post",
     "DocumentSummary",
+    "PostSafety",
     "FeedMeta",
     "PostAccount",
     "Card",
