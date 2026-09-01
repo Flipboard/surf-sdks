@@ -1123,6 +1123,57 @@ func (a *AudioAPI) SkipToTopic(episodeURL, topic string, limit int) (json.RawMes
 	return a.c.get("/audio/skip-to-topic", v)
 }
 
+// Podcast popularity (daily charts)
+
+// GetPopularShows returns ranked popular podcast shows for one region/category
+// daily snapshot (read:audio). The chart blends Apple top charts, Podcast
+// Index trending, and Surf's fediverse engagement signal; rows come back in
+// rank order and carry the per-source ranks (apple_rank, pi_trend_rank) for
+// "№ 3 on Apple" style attribution, plus flyf_id/feed_url for feeding the
+// other audio APIs. region ("" for the server default "us") and category
+// ("" for "all"; or an Apple genre slug) select the chart; limit <= 0 uses
+// the server default of 50 (max 200); ingestedOnly=true limits to shows
+// already ingested and playable on Surf (false exposes the full chart for gap
+// analysis — note the server also defaults to true); date ("" for the latest
+// snapshot) requests an explicit YYYY-MM-DD snapshot.
+// PopularShowsResponse is available as a decode target.
+func (a *AudioAPI) GetPopularShows(region, category string, limit int, ingestedOnly bool, date string) (json.RawMessage, error) {
+	v := url.Values{"ingestedOnly": {strconv.FormatBool(ingestedOnly)}}
+	if region != "" {
+		v.Set("region", region)
+	}
+	if category != "" {
+		v.Set("category", category)
+	}
+	if limit > 0 {
+		v.Set("limit", strconv.Itoa(limit))
+	}
+	if date != "" {
+		v.Set("date", date)
+	}
+	return a.c.get("/audio/popular/shows", v)
+}
+
+// GetPopularEpisodes returns ranked hot podcast episodes from the global
+// daily snapshot (read:audio). Episodes are ranked by fediverse engagement
+// (favourites + reblogs + replies) and mention breadth over a recent ingest
+// window — a chart neither Apple nor Podcast Index has. Rows come back in
+// rank order, each with episode_url (the audio file URL), episode_url_hash,
+// show_title, engagement_sum, and post_count. limit <= 0 uses the server
+// default of 50 (max 200); date ("" for the latest snapshot) requests an
+// explicit YYYY-MM-DD snapshot. PopularEpisodesResponse is available as a
+// decode target.
+func (a *AudioAPI) GetPopularEpisodes(limit int, date string) (json.RawMessage, error) {
+	v := url.Values{}
+	if limit > 0 {
+		v.Set("limit", strconv.Itoa(limit))
+	}
+	if date != "" {
+		v.Set("date", date)
+	}
+	return a.c.get("/audio/popular/episodes", v)
+}
+
 func (a *AudioAPI) GetDailyQuiz() (json.RawMessage, error) { return a.c.get("/audio/quiz/daily", nil) }
 func (a *AudioAPI) TextToSpeech(text, voice string) ([]byte, error) {
 	if voice == "" {

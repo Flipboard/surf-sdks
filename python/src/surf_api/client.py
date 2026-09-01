@@ -1008,6 +1008,56 @@ class _AudioAPI:
                             {"episode_url": episode_url, "topic": topic,
                              "limit": limit})
 
+    # Podcast popularity (daily charts)
+    def get_popular_shows(self, region: str = "us", category: str = "all",
+                          limit: int = 50, ingested_only: bool = True,
+                          date: str = None) -> dict:
+        """Ranked popular podcast shows for one region/category snapshot.
+
+        Serves the daily popularity snapshot: Apple top charts, Podcast Index
+        trending, and Surf's fediverse engagement signal blended into one
+        ranked list. Rows come back in rank order and carry the per-source
+        ranks (``apple_rank``, ``pi_trend_rank``) for "№ 3 on Apple" style
+        attribution, plus ``flyf_id``/``feed_url`` for feeding the other audio
+        APIs. ``snapshot_date`` in the envelope says which daily snapshot was
+        served.
+
+        Args:
+            region: Chart region code (default ``'us'``).
+            category: Chart category: ``'all'`` (default) or an Apple genre
+                slug (e.g. ``'technology'``).
+            limit: Maximum rows (default 50, max 200).
+            ingested_only: When True (default), only shows already ingested
+                and playable on Surf; False exposes the full chart for gap
+                analysis.
+            date: Optional explicit snapshot date ``YYYY-MM-DD``; omit for
+                the latest snapshot.
+        """
+        return self._c._get("/audio/popular/shows", {
+            "region": region, "category": category, "limit": limit,
+            "ingestedOnly": "true" if ingested_only else "false",
+            "date": date,
+        })
+
+    def get_popular_episodes(self, limit: int = 50, date: str = None) -> dict:
+        """Ranked hot podcast episodes (global daily snapshot).
+
+        Episodes ranked by fediverse engagement (favourites + reblogs +
+        replies) and mention breadth over a recent ingest window — a chart
+        neither Apple nor Podcast Index has. Rows come back in rank order,
+        each with ``episode_url`` (the audio file URL), ``episode_url_hash``,
+        ``show_title``, ``engagement_sum``, and ``post_count``.
+        ``snapshot_date`` in the envelope says which daily snapshot was
+        served.
+
+        Args:
+            limit: Maximum rows (default 50, max 200).
+            date: Optional explicit snapshot date ``YYYY-MM-DD``; omit for
+                the latest snapshot.
+        """
+        return self._c._get("/audio/popular/episodes",
+                            {"limit": limit, "date": date})
+
     # Quiz
     def get_daily_quiz(self) -> dict:
         """Get the daily quiz questions."""
