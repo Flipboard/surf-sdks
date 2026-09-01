@@ -289,6 +289,50 @@ public class AudioApi {
                 "limit", limit));
     }
 
+    // Podcast popularity (daily charts)
+
+    /** The US all-categories popular-shows chart with server defaults. See the full overload. */
+    public Map<String, Object> getPopularShows() {
+        return getPopularShows("us", "all", 50, true, null);
+    }
+
+    /**
+     * Ranked popular podcast shows for one region/category daily snapshot
+     * ({@code read:audio}). The chart blends Apple top charts, Podcast Index trending,
+     * and Surf's fediverse engagement signal; rows come back in rank order and carry the
+     * per-source ranks ({@code apple_rank}, {@code pi_trend_rank}) for "№ 3 on Apple"
+     * style attribution, plus {@code flyf_id}/{@code feed_url} for feeding the other
+     * audio APIs. {@code region} default {@code "us"}; {@code category} is {@code "all"}
+     * or an Apple genre slug; {@code limit} default 50, max 200; {@code ingestedOnly}
+     * true limits to shows already ingested and playable on Surf (false exposes the full
+     * chart for gap analysis); {@code date} ({@code null} for the latest snapshot)
+     * requests an explicit {@code YYYY-MM-DD} snapshot.
+     */
+    public Map<String, Object> getPopularShows(String region, String category, int limit,
+                                               boolean ingestedOnly, String date) {
+        return c.get("/audio/popular/shows", map("region", region, "category", category,
+                "limit", limit, "ingestedOnly", ingestedOnly, "date", date));
+    }
+
+    /** The hot-episodes chart with server defaults. See the full overload. */
+    public Map<String, Object> getPopularEpisodes() {
+        return getPopularEpisodes(50, null);
+    }
+
+    /**
+     * Ranked hot podcast episodes from the global daily snapshot ({@code read:audio}).
+     * Episodes are ranked by fediverse engagement (favourites + reblogs + replies) and
+     * mention breadth over a recent ingest window — a chart neither Apple nor Podcast
+     * Index has. Rows come back in rank order, each with {@code episode_url} (the audio
+     * file URL), {@code episode_url_hash}, {@code show_title}, {@code engagement_sum},
+     * and {@code post_count}. {@code limit} default 50, max 200; {@code date}
+     * ({@code null} for the latest snapshot) requests an explicit {@code YYYY-MM-DD}
+     * snapshot.
+     */
+    public Map<String, Object> getPopularEpisodes(int limit, String date) {
+        return c.get("/audio/popular/episodes", map("limit", limit, "date", date));
+    }
+
     // Quiz
 
     /** Get the daily quiz questions. */

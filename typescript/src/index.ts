@@ -37,6 +37,8 @@ import type {
   PodcastTranslationResponse,
   PodcastCatchUpResponse,
   PodcastTopicSeekResponse,
+  PopularShowsResponse,
+  PopularEpisodesResponse,
 } from './types';
 
 export * from './types';
@@ -756,6 +758,46 @@ class AudioAPI {
   skipToTopic(episode_url: string, topic: string, limit = 5): Promise<PodcastTopicSeekResponse> {
     return this.c._get('/audio/skip-to-topic', { episode_url, topic, limit });
   }
+
+  // Podcast popularity (daily charts)
+
+  /**
+   * Ranked popular podcast shows for one region/category daily snapshot (`read:audio`).
+   * Blends Apple top charts, Podcast Index trending, and Surf's fediverse engagement
+   * signal into one ranked list; rows come back in rank order and carry the per-source
+   * ranks (`apple_rank`, `pi_trend_rank`) for "№ 3 on Apple" style attribution, plus
+   * `flyf_id`/`feed_url` for feeding the other audio APIs. `ingested_only` defaults to
+   * true (only shows already ingested and playable on Surf; pass false for the full
+   * chart). `date` is an explicit `YYYY-MM-DD` snapshot (omit for latest). `limit`
+   * default 50, max 200.
+   */
+  getPopularShows(opts?: {
+    region?: string;
+    category?: string;
+    limit?: number;
+    /** Sent on the wire as the camelCase `ingestedOnly` param. */
+    ingested_only?: boolean;
+    date?: string;
+  }): Promise<PopularShowsResponse> {
+    const { region = 'us', category = 'all', limit = 50, ingested_only = true, date } = opts ?? {};
+    return this.c._get('/audio/popular/shows', {
+      region, category, limit, ingestedOnly: ingested_only, date,
+    });
+  }
+  /**
+   * Ranked hot podcast episodes from the global daily snapshot (`read:audio`).
+   * Episodes ranked by fediverse engagement (favourites + reblogs + replies) and
+   * mention breadth over a recent ingest window — a chart neither Apple nor Podcast
+   * Index has. Rows come back in rank order, each with `episode_url` (the audio file
+   * URL), `episode_url_hash`, `show_title`, `engagement_sum`, and `post_count`.
+   * `date` is an explicit `YYYY-MM-DD` snapshot (omit for latest). `limit` default 50,
+   * max 200.
+   */
+  getPopularEpisodes(opts?: { limit?: number; date?: string }): Promise<PopularEpisodesResponse> {
+    const { limit = 50, date } = opts ?? {};
+    return this.c._get('/audio/popular/episodes', { limit, date });
+  }
+
   getDailyQuiz() { return this.c._get('/audio/quiz/daily'); }
   async textToSpeech(text: string, voice = 'en-US-AriaNeural'): Promise<ArrayBuffer> {
     const resp = await this.c._request<Response>('POST', '/audio/tts', { json: { text, voice }, raw: true });

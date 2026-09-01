@@ -232,6 +232,26 @@ are retrieval only and take the raw episode URL (no hashing). Catch-up and
 skip-to-topic work from the cached transcript and throw `SurfNotFoundError`
 until the episode has one.
 
+### Popularity charts
+
+Daily ranked charts from the popularity snapshots (`read:audio` scope). Shows
+blend Apple top charts, Podcast Index trending, and Surf's fediverse engagement
+signal (rows carry `apple_rank` / `pi_trend_rank` for attribution); episodes
+are ranked purely by fediverse engagement — a chart neither Apple nor Podcast
+Index has.
+
+```java
+// Popular shows — US, all categories, ingested-only, latest snapshot
+Map<String, Object> chart = client.audio.getPopularShows();
+
+// Popular shows — explicit region/category/limit, full chart, pinned snapshot date
+Map<String, Object> ukTech = client.audio.getPopularShows("gb", "technology", 25, false, "2026-08-30");
+
+// Hot episodes ranked by fediverse engagement (global)
+Map<String, Object> hot = client.audio.getPopularEpisodes();
+Map<String, Object> hotTen = client.audio.getPopularEpisodes(10, null);
+```
+
 ## Longform (standard.site / Leaflet)
 
 Documents and publications are addressed by AT-URI — pass the raw URI, the SDK

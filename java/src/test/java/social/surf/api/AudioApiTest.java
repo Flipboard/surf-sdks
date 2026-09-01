@@ -272,4 +272,47 @@ class AudioApiTest {
         client.audio.skipToTopic(EPISODE_URL, "evals", 20);
         assertTrue(lastRawQuery.endsWith("&topic=evals&limit=20"), lastRawQuery);
     }
+
+    // ------------------------------------------------------------------
+    // Popularity charts
+    // ------------------------------------------------------------------
+
+    @Test
+    void getPopularShowsDefaultsToUsAllIngestedOnly() {
+        responseBody = "{\"ok\":true,\"region\":\"us\",\"category\":\"all\","
+                + "\"snapshot_date\":\"2026-08-31\",\"ingested_only\":true,"
+                + "\"limit\":50,\"shows\":[],\"total\":0}";
+        Map<String, Object> resp = client.audio.getPopularShows();
+        assertEquals("GET", lastMethod);
+        assertEquals("/v1/audio/popular/shows", lastRawPath);
+        // date is null by default and must be dropped; ingestedOnly serialized lowercase.
+        assertEquals("region=us&category=all&limit=50&ingestedOnly=true", lastRawQuery);
+        assertEquals(true, resp.get("ok"));
+        assertEquals("2026-08-31", resp.get("snapshot_date"));
+    }
+
+    @Test
+    void getPopularShowsPassesAllParams() {
+        client.audio.getPopularShows("gb", "technology", 10, false, "2026-08-30");
+        assertEquals("/v1/audio/popular/shows", lastRawPath);
+        assertEquals("region=gb&category=technology&limit=10&ingestedOnly=false&date=2026-08-30",
+                lastRawQuery);
+    }
+
+    @Test
+    void getPopularEpisodesDefaultsToLimit50() {
+        responseBody = "{\"ok\":true,\"snapshot_date\":\"2026-08-31\",\"limit\":50,"
+                + "\"episodes\":[],\"total\":0}";
+        Map<String, Object> resp = client.audio.getPopularEpisodes();
+        assertEquals("GET", lastMethod);
+        assertEquals("/v1/audio/popular/episodes", lastRawPath);
+        assertEquals("limit=50", lastRawQuery);
+        assertEquals(true, resp.get("ok"));
+    }
+
+    @Test
+    void getPopularEpisodesPassesLimitAndDate() {
+        client.audio.getPopularEpisodes(5, "2026-08-30");
+        assertEquals("limit=5&date=2026-08-30", lastRawQuery);
+    }
 }

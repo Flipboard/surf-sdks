@@ -583,3 +583,82 @@ export interface PodcastTopicSeekResponse {
   total: number;
   error?: string | null;
 }
+
+/** One ranked show row from a popular-shows snapshot. */
+export interface PopularShow {
+  /** Position in the chart (1-based). */
+  rank: number;
+  /** Blended popularity score (higher is more popular). */
+  score: number;
+  /** Podcast feed ID (SHA1 hex of the full RSS feed URL). */
+  flyf_id?: string | null;
+  /** Whether the show is already ingested and playable on Surf. */
+  ingested: boolean;
+  feed_url?: string | null;
+  title?: string | null;
+  artwork_url?: string | null;
+  itunes_id?: number | null;
+  podcastindex_id?: number | null;
+  /** Rank on the Apple top chart, when charted there. */
+  apple_rank?: number | null;
+  /** Rank on Podcast Index trending, when charted there. */
+  pi_trend_rank?: number | null;
+  /** Fediverse engagement over the last 7 days. */
+  engagement_7d?: number | null;
+  /** When the snapshot row was written. */
+  created_at?: string | null;
+}
+
+/** Response of `audio.getPopularShows`. */
+export interface PopularShowsResponse {
+  ok: boolean;
+  /** Echo of the (normalized) region. */
+  region: string;
+  /** Echo of the (normalized) category. */
+  category: string;
+  /** ISO date of the snapshot served; null when no snapshot exists yet. */
+  snapshot_date?: string | null;
+  ingested_only: boolean;
+  limit: number;
+  /** Ranked shows, in rank order. */
+  shows: PopularShow[];
+  /** Number of rows returned. */
+  total: number;
+  error?: string | null;
+}
+
+/** One ranked episode row from a hot-episodes snapshot. */
+export interface PopularEpisode {
+  /** Position in the chart (1-based). */
+  rank: number;
+  /** Engagement-based popularity score (higher is hotter). */
+  score: number;
+  /** SHA1 hex of the full audio URL — the episode's stable ID across the audio APIs. */
+  episode_url_hash: string;
+  /** The episode's audio file URL. */
+  episode_url: string;
+  /** Podcast feed ID (SHA1 hex of the full RSS feed URL). */
+  flyf_id?: string | null;
+  title?: string | null;
+  show_title?: string | null;
+  artwork_url?: string | null;
+  /** Favourites + reblogs + replies across fediverse posts about the episode. */
+  engagement_sum: number;
+  /** Number of fediverse posts referencing the episode. */
+  post_count: number;
+  /** When the snapshot row was written. */
+  created_at?: string | null;
+}
+
+/** Response of `audio.getPopularEpisodes`. */
+export interface PopularEpisodesResponse {
+  ok: boolean;
+  /** ISO date of the snapshot served; null when no snapshot exists yet. */
+  snapshot_date?: string | null;
+  limit: number;
+  /** Ranked episodes, in rank order. */
+  episodes: PopularEpisode[];
+  /** Number of rows returned. */
+  total: number;
+  error?: string | null;
+}

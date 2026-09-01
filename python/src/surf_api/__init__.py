@@ -33,6 +33,8 @@ from .models import (
     PodcastFactCheck,
     PodcastTranslation,
     PodcastTopicMatch,
+    PopularShow,
+    PopularEpisode,
 )
 from .exceptions import (
     SurfAPIError,
@@ -84,6 +86,8 @@ __all__ = [
     "PodcastFactCheck",
     "PodcastTranslation",
     "PodcastTopicMatch",
+    "PopularShow",
+    "PopularEpisode",
     "episode_url_sha1",
 ]
 

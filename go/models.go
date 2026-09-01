@@ -494,3 +494,87 @@ type PodcastTopicSeekResponse struct {
 	Total   int                 `json:"total"`
 	Error   *string             `json:"error,omitempty"`
 }
+
+// PopularShow is one ranked show row from a popular-shows snapshot.
+type PopularShow struct {
+	// Rank is the position in the chart (1-based).
+	Rank int `json:"rank"`
+	// Score is the blended popularity score (higher is more popular).
+	Score float64 `json:"score"`
+	// FlyfID is the podcast feed ID (SHA1 hex of the full RSS feed URL).
+	FlyfID *string `json:"flyf_id,omitempty"`
+	// Ingested reports whether the show is already ingested and playable on Surf.
+	Ingested   bool    `json:"ingested"`
+	FeedURL    *string `json:"feed_url,omitempty"`
+	Title      *string `json:"title,omitempty"`
+	ArtworkURL *string `json:"artwork_url,omitempty"`
+	ITunesID   *int64  `json:"itunes_id,omitempty"`
+	// PodcastIndexID is the Podcast Index feed id.
+	PodcastIndexID *int64 `json:"podcastindex_id,omitempty"`
+	// AppleRank is the rank on the Apple top chart, when charted there.
+	AppleRank *int `json:"apple_rank,omitempty"`
+	// PITrendRank is the rank on Podcast Index trending, when charted there.
+	PITrendRank *int `json:"pi_trend_rank,omitempty"`
+	// Engagement7d is the fediverse engagement over the last 7 days.
+	Engagement7d *int64 `json:"engagement_7d,omitempty"`
+	// CreatedAt is when the snapshot row was written.
+	CreatedAt *string `json:"created_at,omitempty"`
+}
+
+// PopularShowsResponse is the response of Audio.GetPopularShows.
+type PopularShowsResponse struct {
+	OK bool `json:"ok"`
+	// Region echoes the (normalized) chart region.
+	Region string `json:"region"`
+	// Category echoes the (normalized) chart category.
+	Category string `json:"category"`
+	// SnapshotDate is the ISO date of the snapshot served; nil when no
+	// snapshot exists yet.
+	SnapshotDate *string `json:"snapshot_date,omitempty"`
+	IngestedOnly bool    `json:"ingested_only"`
+	Limit        int     `json:"limit"`
+	// Shows come back in rank order.
+	Shows []PopularShow `json:"shows"`
+	// Total is the number of rows returned.
+	Total int     `json:"total"`
+	Error *string `json:"error,omitempty"`
+}
+
+// PopularEpisode is one ranked episode row from a hot-episodes snapshot.
+type PopularEpisode struct {
+	// Rank is the position in the chart (1-based).
+	Rank int `json:"rank"`
+	// Score is the engagement-based popularity score (higher is hotter).
+	Score float64 `json:"score"`
+	// EpisodeURLHash is the SHA1 hex of the full audio URL — the episode's
+	// stable ID across the audio APIs (see the EpisodeURLHash function).
+	EpisodeURLHash string `json:"episode_url_hash"`
+	// EpisodeURL is the episode's audio file URL.
+	EpisodeURL string `json:"episode_url"`
+	// FlyfID is the podcast feed ID (SHA1 hex of the full RSS feed URL).
+	FlyfID     *string `json:"flyf_id,omitempty"`
+	Title      *string `json:"title,omitempty"`
+	ShowTitle  *string `json:"show_title,omitempty"`
+	ArtworkURL *string `json:"artwork_url,omitempty"`
+	// EngagementSum is favourites + reblogs + replies across fediverse posts
+	// about the episode.
+	EngagementSum int64 `json:"engagement_sum"`
+	// PostCount is the number of fediverse posts referencing the episode.
+	PostCount int `json:"post_count"`
+	// CreatedAt is when the snapshot row was written.
+	CreatedAt *string `json:"created_at,omitempty"`
+}
+
+// PopularEpisodesResponse is the response of Audio.GetPopularEpisodes.
+type PopularEpisodesResponse struct {
+	OK bool `json:"ok"`
+	// SnapshotDate is the ISO date of the snapshot served; nil when no
+	// snapshot exists yet.
+	SnapshotDate *string `json:"snapshot_date,omitempty"`
+	Limit        int     `json:"limit"`
+	// Episodes come back in rank order.
+	Episodes []PopularEpisode `json:"episodes"`
+	// Total is the number of rows returned.
+	Total int     `json:"total"`
+	Error *string `json:"error,omitempty"`
+}

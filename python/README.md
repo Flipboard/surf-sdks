@@ -187,6 +187,31 @@ Typed models are available in `surf_api.models`: `PodcastEpisodeSearchResult`,
 `from_dict` / `from_list` helpers, e.g.
 `PodcastSponsorAd.from_list(client.audio.get_podcast_sponsors(company="Squarespace"))`.
 
+### Popularity charts
+
+Daily ranked charts from the popularity snapshots (`read:audio` scope). Shows
+blend Apple top charts, Podcast Index trending, and Surf's fediverse
+engagement signal; episodes are ranked purely by fediverse engagement — a
+chart neither Apple nor Podcast Index has.
+
+```python
+# Popular shows for a region/category (rank order, with per-source ranks)
+chart = client.audio.get_popular_shows(region="us", category="technology")
+for s in chart["shows"]:
+    print(s["rank"], s["title"], s["apple_rank"], s["pi_trend_rank"])
+
+# Hot episodes ranked by fediverse engagement (global)
+hot = client.audio.get_popular_episodes(limit=10)
+for e in hot["episodes"]:
+    print(e["rank"], e["show_title"], "—", e["title"], e["engagement_sum"])
+```
+
+`ingested_only=True` (the default) limits shows to those already ingested and
+playable on Surf; pass `date="YYYY-MM-DD"` for an explicit snapshot instead of
+the latest. Typed models: `PopularShow` and `PopularEpisode`, each with
+`from_dict` / `from_list`, e.g.
+`PopularShow.from_list(client.audio.get_popular_shows())`.
+
 ## Error Handling
 
 ```python

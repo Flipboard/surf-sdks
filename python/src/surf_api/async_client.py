@@ -734,6 +734,31 @@ class _AsyncAudioAPI:
                                   {"episode_url": episode_url, "topic": topic,
                                    "limit": limit})
 
+    # Podcast popularity (daily charts)
+    async def get_popular_shows(self, region: str = "us", category: str = "all",
+                                limit: int = 50, ingested_only: bool = True,
+                                date: str = None) -> dict:
+        """Ranked popular podcast shows for one region/category daily
+        snapshot: Apple charts + Podcast Index trending + fediverse
+        engagement, in rank order with per-source ranks (apple_rank,
+        pi_trend_rank). ingested_only=True (default) limits to shows playable
+        on Surf; date is an explicit YYYY-MM-DD snapshot (omit for latest).
+        limit default 50, max 200."""
+        return await self._c._get("/audio/popular/shows", {
+            "region": region, "category": category, "limit": limit,
+            "ingestedOnly": "true" if ingested_only else "false",
+            "date": date,
+        })
+
+    async def get_popular_episodes(self, limit: int = 50, date: str = None) -> dict:
+        """Ranked hot podcast episodes (global daily snapshot) by fediverse
+        engagement and mention breadth, in rank order — each row carries
+        episode_url (the audio file URL), episode_url_hash, show_title,
+        engagement_sum, and post_count. date is an explicit YYYY-MM-DD
+        snapshot (omit for latest). limit default 50, max 200."""
+        return await self._c._get("/audio/popular/episodes",
+                                  {"limit": limit, "date": date})
+
     async def get_daily_quiz(self) -> dict:
         return await self._c._get("/audio/quiz/daily")
 

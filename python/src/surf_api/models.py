@@ -779,3 +779,97 @@ class PodcastTopicMatch:
         if isinstance(data, list):
             return [m for d in data if (m := cls.from_dict(d)) is not None]
         return []
+
+
+# ==========================================================================
+# Podcast popularity (daily popular-shows / hot-episodes charts)
+# ==========================================================================
+
+@dataclass
+class PopularShow:
+    """One ranked show row from a popular-shows snapshot."""
+    rank: int = 0
+    score: float = 0.0  # blended popularity score (higher is more popular)
+    flyf_id: Optional[str] = None  # podcast feed ID (SHA1 hex of the full RSS feed URL)
+    ingested: bool = False  # already ingested and playable on Surf
+    feed_url: Optional[str] = None
+    title: Optional[str] = None
+    artwork_url: Optional[str] = None
+    itunes_id: Optional[int] = None
+    podcastindex_id: Optional[int] = None
+    apple_rank: Optional[int] = None  # rank on the Apple top chart, when charted
+    pi_trend_rank: Optional[int] = None  # rank on Podcast Index trending, when charted
+    engagement_7d: Optional[int] = None  # fediverse engagement over the last 7 days
+    created_at: Optional[str] = None  # when the snapshot row was written
+
+    @classmethod
+    def from_dict(cls, d: Optional[dict]) -> Optional[PopularShow]:
+        if not d:
+            return None
+        return cls(
+            rank=d.get("rank", 0),
+            score=d.get("score", 0.0),
+            flyf_id=d.get("flyf_id"),
+            ingested=d.get("ingested", False),
+            feed_url=d.get("feed_url"),
+            title=d.get("title"),
+            artwork_url=d.get("artwork_url"),
+            itunes_id=d.get("itunes_id"),
+            podcastindex_id=d.get("podcastindex_id"),
+            apple_rank=d.get("apple_rank"),
+            pi_trend_rank=d.get("pi_trend_rank"),
+            engagement_7d=d.get("engagement_7d"),
+            created_at=d.get("created_at"),
+        )
+
+    @classmethod
+    def from_list(cls, data) -> List[PopularShow]:
+        """Parse shows from an API response (list or dict with 'shows')."""
+        if isinstance(data, dict):
+            data = data.get("shows", [])
+        if isinstance(data, list):
+            return [s for d in data if (s := cls.from_dict(d)) is not None]
+        return []
+
+
+@dataclass
+class PopularEpisode:
+    """One ranked episode row from a hot-episodes snapshot."""
+    rank: int = 0
+    score: float = 0.0  # engagement-based popularity score (higher is hotter)
+    episode_url_hash: str = ""  # SHA1 hex of the full audio URL — stable episode ID
+    episode_url: str = ""  # the episode's audio file URL
+    flyf_id: Optional[str] = None  # podcast feed ID (SHA1 hex of the full RSS feed URL)
+    title: Optional[str] = None
+    show_title: Optional[str] = None
+    artwork_url: Optional[str] = None
+    engagement_sum: int = 0  # favourites + reblogs + replies across fediverse posts
+    post_count: int = 0  # number of fediverse posts referencing the episode
+    created_at: Optional[str] = None  # when the snapshot row was written
+
+    @classmethod
+    def from_dict(cls, d: Optional[dict]) -> Optional[PopularEpisode]:
+        if not d:
+            return None
+        return cls(
+            rank=d.get("rank", 0),
+            score=d.get("score", 0.0),
+            episode_url_hash=d.get("episode_url_hash", ""),
+            episode_url=d.get("episode_url", ""),
+            flyf_id=d.get("flyf_id"),
+            title=d.get("title"),
+            show_title=d.get("show_title"),
+            artwork_url=d.get("artwork_url"),
+            engagement_sum=d.get("engagement_sum", 0),
+            post_count=d.get("post_count", 0),
+            created_at=d.get("created_at"),
+        )
+
+    @classmethod
+    def from_list(cls, data) -> List[PopularEpisode]:
+        """Parse episodes from an API response (list or dict with 'episodes')."""
+        if isinstance(data, dict):
+            data = data.get("episodes", [])
+        if isinstance(data, list):
+            return [e for d in data if (e := cls.from_dict(d)) is not None]
+        return []
