@@ -273,6 +273,26 @@ public class SurfClient {
     }
 
     /** GET returning a JSON array of objects as {@code List<Map<String, Object>>} (e.g. posts). */
+    /**
+     * GET that also reports the HTTP status: the returned map carries {@code ready} =
+     * {@code true} for 200 and {@code false} for 206 (media still processing).
+     */
+    Map<String, Object> getWithStatus(String path) {
+        HttpRequest req = buildRequestAbsolute("GET", url(path), null, timeout);
+        HttpResponse<byte[]> resp = send(req, path);
+        Map<String, Object> result = new LinkedHashMap<>();
+        byte[] body = resp.body();
+        if (body != null && body.length > 0) {
+            try {
+                result.putAll(mapper.readValue(body, new TypeReference<Map<String, Object>>() {}));
+            } catch (IOException e) {
+                throw new SurfAPIError("Failed to parse response from " + path + ": " + e.getMessage());
+            }
+        }
+        result.put("ready", resp.statusCode() == 200);
+        return result;
+    }
+
     List<Map<String, Object>> getMapList(String path, Map<String, Object> params) {
         HttpResponse<byte[]> resp = execute("GET", path, params, null, timeout);
         byte[] body = resp.body();
@@ -350,9 +370,24 @@ public class SurfClient {
      * binary uploads are handled by callers that manage their own retry/resume strategy.
      */
     <T> T uploadMultipart(String path, byte[] fileBytes, String filename, String contentType, Class<T> type) {
+        return uploadMultipart(path, fileBytes, filename, contentType, null, type);
+    }
+
+    /** Multipart upload with extra text form fields (null values skipped) before the "file" part. */
+    <T> T uploadMultipart(String path, byte[] fileBytes, String filename, String contentType,
+                          Map<String, String> fields, Class<T> type) {
         String boundary = "----SurfBoundary" + UUID.randomUUID().toString().replace("-", "");
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         try {
+            if (fields != null) {
+                for (Map.Entry<String, String> f : fields.entrySet()) {
+                    if (f.getValue() == null) continue;
+                    String part = "--" + boundary + "\r\n"
+                            + "Content-Disposition: form-data; name=\"" + f.getKey() + "\"\r\n\r\n"
+                            + f.getValue() + "\r\n";
+                    out.write(part.getBytes(StandardCharsets.UTF_8));
+                }
+            }
             String head = "--" + boundary + "\r\n"
                     + "Content-Disposition: form-data; name=\"file\"; filename=\"" + filename + "\"\r\n"
                     + "Content-Type: " + contentType + "\r\n\r\n";

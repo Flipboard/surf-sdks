@@ -9,6 +9,7 @@
 package surf
 
 import (
+	"mime/multipart"
 	"bytes"
 	"crypto/sha1"
 	"encoding/hex"
@@ -231,6 +232,98 @@ func cappedBackoff(attempt int) time.Duration {
 		secs = 60
 	}
 	return time.Duration(secs) * time.Second
+}
+
+// doStatus is do plus the final HTTP status code, for endpoints where a 2xx other than
+// 200 carries meaning (206 = media still processing).
+func (c *Client) doStatus(method, path string, params url.Values, body interface{}) ([]byte, int, error) {
+	u := c.url(path)
+	if params != nil && len(params) > 0 {
+		u += "?" + params.Encode()
+	}
+	var reqBody io.Reader
+	if body != nil {
+		b, err := json.Marshal(body)
+		if err != nil {
+			return nil, 0, fmt.Errorf("surf: marshal body: %w", err)
+		}
+		reqBody = bytes.NewReader(b)
+	}
+	req, err := http.NewRequest(method, u, reqBody)
+	if err != nil {
+		return nil, 0, err
+	}
+	req.Header.Set("X-API-Key", c.APIKey)
+	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("Accept", "application/json")
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	return c.send(req, path)
+}
+
+// doMultipart posts a multipart/form-data body: extra text fields plus one "file" part.
+func (c *Client) doMultipart(path string, params url.Values, fields map[string]string, filename string, data io.Reader) ([]byte, int, error) {
+	u := c.url(path)
+	if params != nil && len(params) > 0 {
+		u += "?" + params.Encode()
+	}
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	for k, v := range fields {
+		if err := w.WriteField(k, v); err != nil {
+			return nil, 0, err
+		}
+	}
+	part, err := w.CreateFormFile("file", filename)
+	if err != nil {
+		return nil, 0, err
+	}
+	if _, err := io.Copy(part, data); err != nil {
+		return nil, 0, err
+	}
+	if err := w.Close(); err != nil {
+		return nil, 0, err
+	}
+	req, err := http.NewRequest("POST", u, &buf)
+	if err != nil {
+		return nil, 0, err
+	}
+	req.Header.Set("X-API-Key", c.APIKey)
+	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	return c.send(req, path)
+}
+
+// send executes one request (no retry: multipart bodies are not replayable) with the
+// same rate-limit bookkeeping and APIError mapping as do.
+func (c *Client) send(req *http.Request, path string) ([]byte, int, error) {
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer resp.Body.Close()
+	if resp.Header.Get("X-RateLimit-Limit") != "" {
+		c.RateLimit = &RateLimitInfo{
+			Limit:     atoi(resp.Header.Get("X-RateLimit-Limit")),
+			Remaining: atoi(resp.Header.Get("X-RateLimit-Remaining")),
+			Reset:     resp.Header.Get("X-RateLimit-Reset"),
+		}
+	}
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, resp.StatusCode, err
+	}
+	if resp.StatusCode >= 400 {
+		apiErr := &APIError{StatusCode: resp.StatusCode}
+		_ = json.Unmarshal(data, apiErr)
+		if apiErr.Message == "" {
+			apiErr.Message = string(data)
+		}
+		return nil, resp.StatusCode, apiErr
+	}
+	return data, resp.StatusCode, nil
 }
 
 func (c *Client) get(path string, params url.Values) (json.RawMessage, error) {
@@ -496,7 +589,7 @@ type PostsOptions struct {
 	Limit    int
 	Cursor   string
 	Sort     string
-	Services string // filter by network: "mastodon", "bluesky", "rss"
+	Services string // networks to include: canonical form is comma-joined service ids ("surf/service/bluesky,surf/service/mastodon"); bare names ("bluesky,rss") also work. Default: mastodon, rss, patreon, bluesky.
 	Since    string // recency cutoff for a digest: a rolling duration ("24h", "7d", "30m", "90s", or bare seconds) or an absolute ISO 8601 timestamp; only posts at/after the cutoff are returned
 }
 
@@ -545,8 +638,33 @@ func (a *FeedsAPI) GetPost(id string, thread bool) (json.RawMessage, error) {
 	return a.c.get("/post", v)
 }
 
-func (a *FeedsAPI) GetFollowing(limit int) (json.RawMessage, error) {
-	return a.c.get("/feed/following", url.Values{"limit": {strconv.Itoa(limit)}})
+// GetFollowing lists the public custom feeds that include surfId as a source (a reverse
+// lookup). It is not the caller's subscriptions; those are feedPins in Preferences.Get.
+func (a *FeedsAPI) GetFollowing(surfId string, limit int) (json.RawMessage, error) {
+	v := url.Values{"surf_id": {surfId}}
+	if limit > 0 {
+		v.Set("limit", strconv.Itoa(limit))
+	}
+	return a.c.get("/feed/following", v)
+}
+
+// GetStatus fetches a single post by id (GET /statuses/{id}); at:// ids are escaped for you.
+func (a *FeedsAPI) GetStatus(id string, service ...string) (json.RawMessage, error) {
+	params, err := svcParams(service)
+	if err != nil {
+		return nil, err
+	}
+	return a.c.get("/statuses/"+url.PathEscape(id), params)
+}
+
+// GetStatusContext returns the thread around a post: {"ancestors": [...], "descendants": [...]}.
+// The subject post itself is not included.
+func (a *FeedsAPI) GetStatusContext(id string, service ...string) (json.RawMessage, error) {
+	params, err := svcParams(service)
+	if err != nil {
+		return nil, err
+	}
+	return a.c.get("/statuses/"+url.PathEscape(id)+"/context", params)
 }
 
 // Write operations (require write:statuses scope).
@@ -565,14 +683,54 @@ func svcParams(service []string) (url.Values, error) {
 }
 
 func (a *FeedsAPI) CreatePost(status, visibility string, service ...string) (json.RawMessage, error) {
-	if visibility == "" {
-		visibility = "public"
+	svc := ""
+	if len(service) > 0 {
+		svc = service[0]
 	}
-	params, err := svcParams(service)
-	if err != nil {
-		return nil, err
+	if len(service) > 1 {
+		return nil, fmt.Errorf("surf: at most one service value may be provided, got %d", len(service))
 	}
-	data, err := a.c.do("POST", "/statuses", params, map[string]string{"status": status, "visibility": visibility})
+	return a.CreatePostWithOptions(CreatePostOptions{Status: status, Visibility: visibility, Service: svc})
+}
+
+// CreatePostOptions is the full POST /statuses body plus the service selector.
+type CreatePostOptions struct {
+	Status      string
+	Visibility  string   // Mastodon only; Bluesky posts are always public and a non-public value is rejected with 400
+	InReplyToID string   // an at:// URI for Bluesky, a numeric id for Mastodon (which also needs Service = "mastodon")
+	MediaIDs    []string // attachment ids from Media.UploadAttachment, max 4
+	Sensitive   bool
+	SpoilerText string
+	Language    string
+	Service     string // "bluesky" or "mastodon"; default Bluesky, then Mastodon
+}
+
+// CreatePostWithOptions creates a post with the full option set (write:statuses).
+func (a *FeedsAPI) CreatePostWithOptions(o CreatePostOptions) (json.RawMessage, error) {
+	if o.Visibility == "" {
+		o.Visibility = "public"
+	}
+	var params url.Values
+	if o.Service != "" {
+		params = url.Values{"service": {o.Service}}
+	}
+	body := map[string]interface{}{"status": o.Status, "visibility": o.Visibility}
+	if o.InReplyToID != "" {
+		body["in_reply_to_id"] = o.InReplyToID
+	}
+	if len(o.MediaIDs) > 0 {
+		body["media_ids"] = o.MediaIDs
+	}
+	if o.Sensitive {
+		body["sensitive"] = true
+	}
+	if o.SpoilerText != "" {
+		body["spoiler_text"] = o.SpoilerText
+	}
+	if o.Language != "" {
+		body["language"] = o.Language
+	}
+	data, err := a.c.do("POST", "/statuses", params, body)
 	return json.RawMessage(data), err
 }
 
@@ -618,6 +776,26 @@ func (a *FeedsAPI) Bookmark(id string, service ...string) (json.RawMessage, erro
 		return nil, err
 	}
 	data, err := a.c.do("POST", "/statuses/"+url.PathEscape(id)+"/bookmark", params, nil)
+	return json.RawMessage(data), err
+}
+
+// Pin pins one of your own posts to your profile (write:statuses).
+func (a *FeedsAPI) Pin(id string, service ...string) (json.RawMessage, error) {
+	params, err := svcParams(service)
+	if err != nil {
+		return nil, err
+	}
+	data, err := a.c.do("POST", "/statuses/"+url.PathEscape(id)+"/pin", params, nil)
+	return json.RawMessage(data), err
+}
+
+// Unpin removes a post from your pinned posts (write:statuses).
+func (a *FeedsAPI) Unpin(id string, service ...string) (json.RawMessage, error) {
+	params, err := svcParams(service)
+	if err != nil {
+		return nil, err
+	}
+	data, err := a.c.do("POST", "/statuses/"+url.PathEscape(id)+"/unpin", params, nil)
 	return json.RawMessage(data), err
 }
 
@@ -1411,9 +1589,60 @@ func (a *CustomFeedsAPI) RemoveOperator(feedId, opId string) error {
 // MediaAPI provides media upload for posts.
 type MediaAPI struct{ c *Client }
 
-// Upload is not yet implemented — requires multipart form encoding.
+// Upload uploads an image and returns {"url": ...}, a hosted URL for feed cover images.
+// The URL cannot be attached to a post; use UploadAttachment for post media.
 func (a *MediaAPI) Upload(filename string, data io.Reader) (json.RawMessage, error) {
-	return nil, fmt.Errorf("surf: media upload not yet implemented in Go SDK")
+	raw, _, err := a.c.doMultipart("/media/upload", nil, nil, filename, data)
+	return json.RawMessage(raw), err
+}
+
+// UploadAttachment uploads an image or video as a post attachment (write:statuses) and
+// returns a Mastodon-shaped media attachment whose "id" goes in CreatePostOptions.MediaIDs.
+// The attachment belongs to the acting linked account (service) and is only valid for a
+// post from the same account. description is alt text ("" to omit). Bluesky video is
+// processed asynchronously: call WaitForAttachment before posting.
+func (a *MediaAPI) UploadAttachment(filename string, data io.Reader, description string, service ...string) (json.RawMessage, error) {
+	params, err := svcParams(service)
+	if err != nil {
+		return nil, err
+	}
+	var fields map[string]string
+	if description != "" {
+		fields = map[string]string{"description": description}
+	}
+	raw, _, err := a.c.doMultipart("/media/attachments", params, fields, filename, data)
+	return json.RawMessage(raw), err
+}
+
+// GetAttachment fetches an attachment. ready is false while it is still processing (HTTP 206).
+func (a *MediaAPI) GetAttachment(id string, service ...string) (raw json.RawMessage, ready bool, err error) {
+	params, err := svcParams(service)
+	if err != nil {
+		return nil, false, err
+	}
+	data, status, err := a.c.doStatus("GET", "/media/attachments/"+url.PathEscape(id), params, nil)
+	return json.RawMessage(data), status == http.StatusOK, err
+}
+
+// WaitForAttachment polls GetAttachment until the attachment is ready or timeout elapses.
+func (a *MediaAPI) WaitForAttachment(id string, pollInterval, timeout time.Duration, service ...string) (json.RawMessage, error) {
+	if pollInterval <= 0 {
+		pollInterval = 2 * time.Second
+	}
+	deadline := time.Now().Add(timeout)
+	for {
+		raw, ready, err := a.GetAttachment(id, service...)
+		if err != nil {
+			return nil, err
+		}
+		if ready {
+			return raw, nil
+		}
+		if time.Now().After(deadline) {
+			return nil, fmt.Errorf("surf: attachment %s not ready after %s", id, timeout)
+		}
+		time.Sleep(pollInterval)
+	}
 }
 
 // GenerateImage starts AI generation of a feed cover image (Stable Diffusion XL)

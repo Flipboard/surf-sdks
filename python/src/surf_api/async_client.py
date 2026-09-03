@@ -17,7 +17,7 @@ Usage::
 from __future__ import annotations
 
 import asyncio
-from typing import Any, AsyncIterator, Optional
+from typing import List, Any, AsyncIterator, Optional
 from urllib.parse import quote
 
 try:
@@ -300,18 +300,29 @@ class _AsyncFeedsAPI:
     async def get_post(self, post_id: str, thread: bool = False) -> dict:
         return await self._c._get("/post", {"id": post_id, "thread": str(thread).lower()})
 
-    async def get_following(self, limit: int = 50) -> dict:
-        return await self._c._get("/feed/following", {"limit": limit})
+    async def get_following(self, surf_id: str, limit: int = 50) -> list:
+        """Public custom feeds that include ``surf_id`` as a source (not the caller's subscriptions)."""
+        return await self._c._get("/feed/following", {"surf_id": surf_id, "limit": limit}) or []
+
+    async def get_status(self, post_id: str, service: str = None) -> dict:
+        return await self._c._get(f"/statuses/{quote(post_id, safe='')}", {"service": service})
+
+    async def get_status_context(self, post_id: str, service: str = None) -> dict:
+        return await self._c._get(f"/statuses/{quote(post_id, safe='')}/context", {"service": service})
 
     async def get_speeddial(self) -> dict:
         return await self._c._get("/feed/speeddial")
 
     async def create_post(self, status: str, visibility: str = "public",
                           in_reply_to_id: str = None, service: str = None,
-                          **kwargs) -> dict:
+                          media_ids: List[str] = None, **kwargs) -> dict:
+        """Create a post. ``visibility`` is Mastodon-only (Bluesky rejects non-public with 400);
+        ``media_ids`` come from :meth:`_AsyncMediaAPI.upload_attachment`."""
         body = {"status": status, "visibility": visibility, **kwargs}
         if in_reply_to_id:
             body["in_reply_to_id"] = in_reply_to_id
+        if media_ids:
+            body["media_ids"] = list(media_ids)
         path = "/statuses"
         if service:
             path += f"?service={service}"
@@ -343,6 +354,18 @@ class _AsyncFeedsAPI:
 
     async def bookmark(self, post_id: str, service: str = None) -> dict:
         path = f"/statuses/{quote(post_id, safe='')}/bookmark"
+        if service:
+            path += f"?service={service}"
+        return await self._c._post(path)
+
+    async def pin(self, post_id: str, service: str = None) -> dict:
+        path = f"/statuses/{quote(post_id, safe='')}/pin"
+        if service:
+            path += f"?service={service}"
+        return await self._c._post(path)
+
+    async def unpin(self, post_id: str, service: str = None) -> dict:
+        path = f"/statuses/{quote(post_id, safe='')}/unpin"
         if service:
             path += f"?service={service}"
         return await self._c._post(path)
@@ -856,13 +879,46 @@ class _AsyncMediaAPI:
         self._c = c
 
     async def upload(self, file_path: str, content_type: str = "image/jpeg") -> dict:
-        """Upload a media file (image)."""
+        """Upload an image and get a hosted URL (feed covers). For post media use :meth:`upload_attachment`."""
         with open(file_path, "rb") as f:
             files = {"file": (file_path, f, content_type)}
             resp = await self._c._client.post("/media/upload", files=files)
         self._c.rate_limit = RateLimitInfo(resp.headers)
         self._c._check_errors(resp)
         return resp.json()
+
+    async def upload_attachment(self, file_path: str, content_type: str = "image/jpeg",
+                                description: str = None, service: str = None) -> dict:
+        """Upload an image/video as a post attachment; pass the returned ``id`` in ``media_ids``."""
+        data = {"description": description} if description else None
+        params = {"service": service} if service else None
+        with open(file_path, "rb") as f:
+            files = {"file": (file_path, f, content_type)}
+            resp = await self._c._client.post("/media/attachments", files=files, data=data, params=params)
+        self._c.rate_limit = RateLimitInfo(resp.headers)
+        self._c._check_errors(resp)
+        return resp.json()
+
+    async def get_attachment(self, attachment_id: str, service: str = None) -> dict:
+        """Fetch an attachment; ``ready`` is False while still processing (HTTP 206)."""
+        params = {"service": service} if service else None
+        resp = await self._c._request_raw("GET", f"/media/attachments/{quote(attachment_id, safe='')}", params=params)
+        body = resp.json() if resp.content else {}
+        body["ready"] = resp.status_code == 200
+        return body
+
+    async def wait_for_attachment(self, attachment_id: str, service: str = None,
+                                  poll_interval: float = 2.0, timeout: float = 180.0) -> dict:
+        """Poll until the attachment is ready or ``timeout`` elapses."""
+        deadline = asyncio.get_event_loop().time() + timeout
+        while True:
+            att = await self.get_attachment(attachment_id, service=service)
+            if att.get("ready"):
+                return att
+            if asyncio.get_event_loop().time() >= deadline:
+                raise SurfAPIError(f"attachment {attachment_id} not ready after {timeout}s",
+                                   status_code=0, error_code="attachment_timeout")
+            await asyncio.sleep(poll_interval)
 
     async def generate_image(self, prompt: str, skip_refiner: bool = False) -> dict:
         """Start AI generation of a feed cover image (Stable Diffusion XL).

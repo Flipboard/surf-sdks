@@ -83,7 +83,7 @@ mirroring the backend DTOs. Every model is annotated `@JsonIgnoreProperties(igno
 | Method | Returns |
 |--------|---------|
 | `feeds.get(surfId)` | `Feed` |
-| `feeds.getPosts(...)`, `feeds.getFollowing()` | `List<Map<String, Object>>` (posts are dynamic) |
+| `feeds.getPosts(...)`, `feeds.getFollowing(surfId)` | `List<Map<String, Object>>` (posts are dynamic) |
 | `ai.feedSummary(...)` | `FeedSummary` |
 | `ai.threadSummary(...)` | `PostSummary` |
 | `ai.factCheck(...)`, `ai.factCheckPost(...)` | `FactCheck` |
@@ -93,7 +93,8 @@ mirroring the backend DTOs. Every model is annotated `@JsonIgnoreProperties(igno
 | `notifications.list(...)` | `List<Notification>` |
 | `customFeeds.list()` | `List<CustomFeed>` |
 | `customFeeds.get/create/update/clone/publish/...Operator(...)` | `CustomFeed` |
-| `media.upload(...)` | `MediaUploadResponse` |
+| `media.upload(...)` | `MediaUploadResponse` (feed cover URL) |
+| `media.uploadAttachment(...)`, `media.getAttachment(...)` | `Map<String, Object>` (post attachment; `ready` flag) |
 | `longform.getDocument(...)` | `Document` |
 | `longform.getPublication(...)` | `Publication` |
 | `longform.listDocuments(...)` | `List<PublicationDocumentEntry>` |

@@ -31,6 +31,63 @@ public class MediaApi {
         return upload(Paths.get(filePath), contentType);
     }
 
+    /**
+     * Upload an image or video as a post attachment ({@code write:statuses}). Returns a
+     * Mastodon-shaped media attachment; pass its {@code id} in the {@code mediaIds} of
+     * {@link FeedsApi#createPost(String, String, String, boolean, String, String, String, java.util.List)}.
+     * The attachment belongs to the acting linked account ({@code service}, "bluesky" or
+     * "mastodon", null for the default) and is only valid for a post from the same account.
+     * Bluesky video is processed asynchronously: call {@link #waitForAttachment} before posting.
+     */
+    public Map<String, Object> uploadAttachment(Path file, String contentType, String description, String service) {
+        byte[] bytes;
+        try {
+            bytes = Files.readAllBytes(file);
+        } catch (IOException e) {
+            throw new SurfAPIError("Failed to read file " + file + ": " + e.getMessage());
+        }
+        String filename = file.getFileName() == null ? "upload" : file.getFileName().toString();
+        String path = "/media/attachments" + (service == null ? "" : "?service=" + service);
+        Map<String, String> fields = description == null ? null : Map.of("description", description);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> result = c.uploadMultipart(path, bytes, filename, contentType, fields, Map.class);
+        return result;
+    }
+
+    public Map<String, Object> uploadAttachment(String filePath, String contentType) {
+        return uploadAttachment(Paths.get(filePath), contentType, null, null);
+    }
+
+    /**
+     * Fetch an attachment. The returned map carries {@code ready}: {@code false} while the
+     * attachment is still processing (HTTP 206).
+     */
+    public Map<String, Object> getAttachment(String attachmentId, String service) {
+        String path = "/media/attachments/" + java.net.URLEncoder.encode(attachmentId, java.nio.charset.StandardCharsets.UTF_8)
+                + (service == null ? "" : "?service=" + service);
+        return c.getWithStatus(path);
+    }
+
+    /** Poll {@link #getAttachment} until it is ready (HTTP 200) or {@code timeout} elapses. */
+    public Map<String, Object> waitForAttachment(String attachmentId, String service, Duration pollInterval, Duration timeout) {
+        long deadline = System.nanoTime() + timeout.toNanos();
+        while (true) {
+            Map<String, Object> att = getAttachment(attachmentId, service);
+            if (Boolean.TRUE.equals(att.get("ready"))) {
+                return att;
+            }
+            if (System.nanoTime() >= deadline) {
+                throw new SurfAPIError("attachment " + attachmentId + " not ready after " + timeout);
+            }
+            try {
+                Thread.sleep(pollInterval.toMillis());
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new SurfAPIError("interrupted while waiting for attachment " + attachmentId);
+            }
+        }
+    }
+
     /** Upload a media file (image) from a {@link Path}. */
     public MediaUploadResponse upload(Path file, String contentType) {
         byte[] bytes;
