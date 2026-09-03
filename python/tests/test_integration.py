@@ -3,6 +3,7 @@
 Tests the SDK client against the live API. Requires SURF_API_TEST_TOKEN env var.
 """
 
+import base64
 import time
 import pytest
 
@@ -37,13 +38,18 @@ def retry_on_rate_limit(fn):
 
 
 def skip_on_scope(fn):
-    """Call fn(), skip test if token lacks the required scope."""
+    """Call fn(), skip test if token lacks the required scope or linked account."""
     try:
         return fn()
     except SurfScopeError:
         pytest.skip("Token lacks required scope")
     except SurfAuthError:
         pytest.skip("No linked account for this service")
+    except SurfAPIError as e:
+        # ?service=X names a network the app owner has no linked account for
+        if e.status_code == 400 and "No linked" in str(e):
+            pytest.skip(f"No linked account for this service: {e}")
+        raise
 
 
 # ---------------------------------------------------------------------------
@@ -329,6 +335,108 @@ class TestWriteBluesky:
         retry_on_rate_limit(lambda: client.feeds.favourite(self.post_id, service="bluesky"))
 
     def test_03_delete(self, client):
+        if not self.post_id:
+            pytest.skip("No post created")
+        retry_on_rate_limit(lambda: client.feeds.delete_post(self.post_id, service="bluesky"))
+
+
+# ---------------------------------------------------------------------------
+# Field-report fixes: attachments, single post/thread, pin, services forms,
+# get_following, visibility/service validation (all Bluesky-targeted)
+# ---------------------------------------------------------------------------
+
+_PNG_2X2 = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEklEQVR42mP8z8DwHwyBgAEACn4D/Y7q8T4AAAAASUVORK5CYII="
+)
+
+
+class TestFieldReportFixes:
+    post_id = None
+    attachment_id = None
+
+    def test_01_get_following_takes_surf_id(self, client):
+        feeds = retry_on_rate_limit(lambda: client.feeds.get_following("surf/topic/technology", limit=5))
+        assert isinstance(feeds, list)
+
+    def test_02_services_as_list_returns_only_bluesky(self, client):
+        posts = retry_on_rate_limit(lambda: client.feeds.get_posts(
+            "surf/topic/technology", limit=10, services=["surf/service/bluesky"]))
+        assert isinstance(posts, list) and posts
+        assert all(str(p.get("id", "")).startswith("at://") for p in posts), \
+            "services=[surf/service/bluesky] must yield Bluesky posts only"
+
+    def test_03_services_bare_names_accepted(self, client):
+        posts = retry_on_rate_limit(lambda: client.feeds.get_posts(
+            "surf/topic/technology", limit=5, services="bluesky,rss"))
+        assert isinstance(posts, list)
+
+    def test_04_topic_feed_includes_bluesky_by_default(self, client):
+        posts = retry_on_rate_limit(lambda: client.feeds.get_posts("surf/topic/technology", limit=40))
+        assert any(str(p.get("id", "")).startswith("at://") for p in posts), \
+            "API-key topic feeds default to include Bluesky"
+
+    def test_05_no_placeholder_rows(self, client):
+        posts = retry_on_rate_limit(lambda: client.feeds.get_posts("surf/topic/technology", limit=40))
+        blank = [p for p in posts if not (p.get("content") or p.get("media_attachments")
+                                          or p.get("card") or p.get("reblog") or p.get("quote"))]
+        assert not blank, f"{len(blank)} contentless placeholder rows"
+        assert len(posts) == 40, f"page should be exactly limit, got {len(posts)}"
+
+    def test_06_upload_attachment(self, client, tmp_path):
+        png = tmp_path / "sdk-test.png"
+        png.write_bytes(_PNG_2X2)
+        att = skip_on_scope(lambda: retry_on_rate_limit(lambda: client.media.upload_attachment(
+            str(png), "image/png", description="Python SDK test image", service="bluesky")))
+        if att is None:
+            return
+        TestFieldReportFixes.attachment_id = att.get("id")
+        assert TestFieldReportFixes.attachment_id
+        ready = client.media.wait_for_attachment(TestFieldReportFixes.attachment_id, service="bluesky", timeout=60)
+        assert ready.get("ready") is True
+
+    def test_07_create_post_with_media(self, client):
+        if not self.attachment_id:
+            pytest.skip("No attachment uploaded")
+        post = skip_on_scope(lambda: retry_on_rate_limit(lambda: client.feeds.create_post(
+            f"Python SDK media test {int(time.time())} -- safe to delete",
+            service="bluesky", media_ids=[self.attachment_id])))
+        if post is None:
+            return
+        TestFieldReportFixes.post_id = post.get("id")
+        assert str(TestFieldReportFixes.post_id).startswith("at://"), "service=bluesky must post to Bluesky"
+        assert post.get("media_attachments"), "post must carry the uploaded attachment"
+
+    def test_08_get_status_and_post(self, client):
+        if not self.post_id:
+            pytest.skip("No post created")
+        status = retry_on_rate_limit(lambda: client.feeds.get_status(self.post_id, service="bluesky"))
+        assert status.get("id") == self.post_id
+        via_post = retry_on_rate_limit(lambda: client.feeds.get_post(self.post_id))
+        assert via_post.get("id") == self.post_id, "GET /post must resolve an at:// id"
+        ctx = retry_on_rate_limit(lambda: client.feeds.get_status_context(self.post_id, service="bluesky"))
+        assert "ancestors" in ctx and "descendants" in ctx
+
+    def test_09_pin_unpin(self, client):
+        if not self.post_id:
+            pytest.skip("No post created")
+        try:
+            retry_on_rate_limit(lambda: client.feeds.pin(self.post_id, service="bluesky"))
+            retry_on_rate_limit(lambda: client.feeds.unpin(self.post_id, service="bluesky"))
+        except SurfNotFoundError:
+            pytest.skip("pin not supported by this account's bridge")
+
+    def test_10_non_public_visibility_rejected_on_bluesky(self, client):
+        with pytest.raises(SurfAPIError) as ei:
+            skip_on_scope(lambda: client.feeds.create_post(
+                f"Python SDK visibility test {int(time.time())}", visibility="direct", service="bluesky"))
+        assert ei.value.status_code == 400, f"expected 400, got {ei.value.status_code}"
+
+    def test_11_unknown_service_rejected(self, client):
+        with pytest.raises(SurfAPIError) as ei:
+            client.feeds.create_post("Python SDK service test", service="threads")
+        assert ei.value.status_code == 400
+
+    def test_12_delete(self, client):
         if not self.post_id:
             pytest.skip("No post created")
         retry_on_rate_limit(lambda: client.feeds.delete_post(self.post_id, service="bluesky"))

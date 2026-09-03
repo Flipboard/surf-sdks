@@ -115,6 +115,10 @@ class SurfApiIntegrationTest {
             Assumptions.assumeTrue(false,
                     "Skipping — scope/auth error: " + e.getMessage());
         }
+        // ?service=X names a network the app owner has no linked account for
+        if (e.getStatusCode() == 400 && e.getMessage() != null && e.getMessage().contains("No linked")) {
+            Assumptions.assumeTrue(false, "Skipping — no linked account: " + e.getMessage());
+        }
         // The account may not be a registered RTB publisher; the API correctly
         // returns 503 "could not be initialized" in that case — tolerate it.
         if (e.getMessage() != null && e.getMessage().contains("could not be initialized")) {
@@ -651,6 +655,138 @@ class SurfApiIntegrationTest {
         } catch (java.io.IOException | InterruptedException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    // ======================================================================
+    // 6z. Field-report fixes: attachments, single post/thread, pin, services
+    //     forms, getFollowing, visibility/service validation (Bluesky-targeted)
+    // ======================================================================
+
+    private static final byte[] PNG_2X2 = java.util.Base64.getDecoder().decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEklEQVR42mP8z8DwHwyBgAEACn4D/Y7q8T4AAAAASUVORK5CYII=");
+    private static String attachmentId;
+    private static String mediaPostId;
+
+    private static boolean isBlueskyId(Object id) {
+        return id != null && String.valueOf(id).startsWith("at://");
+    }
+
+    @Test
+    @Order(680)
+    void getFollowingTakesSurfId() {
+        List<Map<String, Object>> feeds = client.feeds.getFollowing("surf/topic/technology", 5);
+        assertNotNull(feeds);
+    }
+
+    @Test
+    @Order(681)
+    void servicesFormsAndBlueskyDefault() {
+        List<Map<String, Object>> bsky = client.feeds.getPosts("surf/topic/technology", 10, null, null, "surf/service/bluesky");
+        assertFalse(bsky.isEmpty());
+        assertTrue(bsky.stream().allMatch(p -> isBlueskyId(p.get("id"))), "services=surf/service/bluesky must yield Bluesky only");
+        assertNotNull(client.feeds.getPosts("surf/topic/technology", 5, null, null, "bluesky,rss"), "bare names accepted");
+        List<Map<String, Object>> posts = client.feeds.getPosts("surf/topic/technology", 40);
+        assertTrue(posts.stream().anyMatch(p -> isBlueskyId(p.get("id"))), "topic feeds include Bluesky by default");
+        for (Map<String, Object> p : posts) {
+            Object media = p.get("media_attachments");
+            boolean hasMedia = media instanceof List && !((List<?>) media).isEmpty();
+            boolean drawable = (p.get("content") != null && !String.valueOf(p.get("content")).isEmpty())
+                    || hasMedia || p.get("card") != null || p.get("reblog") != null || p.get("quote") != null;
+            assertTrue(drawable, "contentless placeholder row: " + p.get("id"));
+        }
+        assertEquals(40, posts.size(), "page should be exactly limit");
+    }
+
+    @Test
+    @Order(682)
+    void uploadAttachment() throws Exception {
+        java.nio.file.Path png = java.nio.file.Files.createTempFile("sdk-test", ".png");
+        java.nio.file.Files.write(png, PNG_2X2);
+        try {
+            Map<String, Object> att = client.media.uploadAttachment(png, "image/png", "Java SDK test image", "bluesky");
+            attachmentId = String.valueOf(att.get("id"));
+            assertNotNull(att.get("id"), "attachment id expected");
+            Map<String, Object> ready = client.media.waitForAttachment(attachmentId, "bluesky",
+                    java.time.Duration.ofSeconds(2), java.time.Duration.ofSeconds(60));
+            assertEquals(Boolean.TRUE, ready.get("ready"));
+        } catch (SurfAPIError e) {
+            skipOnScopeOrAuth(e);
+        } finally {
+            java.nio.file.Files.deleteIfExists(png);
+        }
+    }
+
+    @Test
+    @Order(683)
+    void createPostWithMedia() {
+        Assumptions.assumeTrue(attachmentId != null, "No attachment uploaded");
+        try {
+            Map<String, Object> post = client.feeds.createPost(
+                    "Java SDK media test " + System.currentTimeMillis() + " -- safe to delete",
+                    "public", null, false, null, null, "bluesky", List.of(attachmentId));
+            mediaPostId = String.valueOf(post.get("id"));
+            assertTrue(isBlueskyId(mediaPostId), "service=bluesky must post to Bluesky");
+            Object media = post.get("media_attachments");
+            assertTrue(media instanceof List && !((List<?>) media).isEmpty(), "post must carry the attachment");
+        } catch (SurfAPIError e) {
+            skipOnScopeOrAuth(e);
+        }
+    }
+
+    @Test
+    @Order(684)
+    void getStatusPostAndContext() {
+        Assumptions.assumeTrue(mediaPostId != null, "No post created");
+        assertEquals(mediaPostId, String.valueOf(client.feeds.getStatus(mediaPostId, "bluesky").get("id")));
+        assertEquals(mediaPostId, String.valueOf(client.feeds.getPost(mediaPostId).get("id")), "GET /post must resolve an at:// id");
+        Map<String, Object> ctx = client.feeds.getStatusContext(mediaPostId, "bluesky");
+        assertTrue(ctx.containsKey("ancestors") && ctx.containsKey("descendants"));
+    }
+
+    @Test
+    @Order(685)
+    void pinUnpin() {
+        Assumptions.assumeTrue(mediaPostId != null, "No post created");
+        try {
+            client.feeds.pin(mediaPostId, "bluesky");
+            client.feeds.unpin(mediaPostId, "bluesky");
+        } catch (SurfNotFoundError e) {
+            Assumptions.assumeTrue(false, "pin not supported by this account's bridge");
+        }
+    }
+
+    @Test
+    @Order(686)
+    void nonPublicVisibilityRejectedOnBluesky() {
+        try {
+            client.feeds.createPost("Java SDK visibility test " + System.currentTimeMillis(), "direct", "bluesky");
+            throw new AssertionError("a direct post to Bluesky must be rejected, not published");
+        } catch (SurfAPIError e) {
+            if (e instanceof SurfScopeError || e instanceof SurfAuthError
+                    || (e.getMessage() != null && e.getMessage().contains("No linked"))) {
+                skipOnScopeOrAuth(e);
+            }
+            assertEquals(400, e.getStatusCode(), "expected 400: " + e.getMessage());
+        }
+    }
+
+    @Test
+    @Order(687)
+    void unknownServiceRejected() {
+        try {
+            client.feeds.createPost("Java SDK service test", "public", "threads");
+            throw new AssertionError("unknown service must be rejected");
+        } catch (SurfAPIError e) {
+            assertEquals(400, e.getStatusCode(), "expected 400 invalid_service: " + e.getMessage());
+        }
+    }
+
+    @Test
+    @Order(688)
+    void deleteMediaPost() {
+        Assumptions.assumeTrue(mediaPostId != null, "No post created");
+        client.feeds.deletePost(mediaPostId, "bluesky");
+        mediaPostId = null;
     }
 
     // ======================================================================

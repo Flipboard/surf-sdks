@@ -38,7 +38,9 @@ const client = new SurfClient({ apiKey: API_TOKEN, baseUrl: BASE_URL, timeout: 6
 
 /** Returns true if err is a scope/auth issue we should skip on. */
 function isScopeOrAuth(err: unknown): boolean {
-  return err instanceof SurfAuthError || err instanceof SurfScopeError;
+  if (err instanceof SurfAuthError || err instanceof SurfScopeError) return true;
+  // ?service=X names a network the app owner has no linked account for
+  return err instanceof SurfAPIError && err.statusCode === 400 && /No linked/.test(err.message);
 }
 
 // ---------------------------------------------------------------------------
@@ -464,6 +466,112 @@ describe('Write Ops - Bluesky', { concurrency: false }, () => {
       } catch {
         console.log(`  [cleanup] Could not delete bluesky post ${postId}`);
       }
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 5b. Field-report fixes: attachments, single post/thread, pin, services
+//     forms, getFollowing, visibility/service validation (Bluesky-targeted)
+// ---------------------------------------------------------------------------
+
+const PNG_2X2 = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEklEQVR42mP8z8DwHwyBgAEACn4D/Y7q8T4AAAAASUVORK5CYII=',
+  'base64',
+);
+
+describe('Field-report fixes', { concurrency: false }, () => {
+  let attachmentId: string | null = null;
+  let postId: string | null = null;
+  let skipped = false;
+
+  it('getFollowing takes a surf_id and returns an array', async () => {
+    const feeds = await client.feeds.getFollowing('surf/topic/technology', 5);
+    assert.ok(Array.isArray(feeds));
+  });
+
+  it('services as a list yields only Bluesky posts', async () => {
+    const posts = await client.feeds.getPosts('surf/topic/technology', { limit: 10, services: ['surf/service/bluesky'] });
+    assert.ok(posts.length > 0);
+    assert.ok(posts.every((p: any) => String(p.id).startsWith('at://')), 'only at:// ids expected');
+  });
+
+  it('services as bare names is accepted', async () => {
+    const posts = await client.feeds.getPosts('surf/topic/technology', { limit: 5, services: 'bluesky,rss' });
+    assert.ok(Array.isArray(posts));
+  });
+
+  it('topic feed includes Bluesky by default and has no placeholder rows', async () => {
+    const posts: any[] = await client.feeds.getPosts('surf/topic/technology', { limit: 40 });
+    assert.ok(posts.some(p => String(p.id).startsWith('at://')), 'Bluesky expected by default');
+    const blank = posts.filter(p => !(p.content || p.media_attachments?.length || p.card || p.reblog || p.quote));
+    assert.equal(blank.length, 0, `${blank.length} contentless rows`);
+    assert.equal(posts.length, 40, 'page should be exactly limit');
+  });
+
+  it('uploads a post attachment', async () => {
+    try {
+      const att: any = await client.media.uploadAttachment(new Blob([PNG_2X2], { type: 'image/png' }), 'sdk-test.png',
+        { description: 'TS SDK test image', service: 'bluesky' });
+      attachmentId = att?.id;
+      assert.ok(attachmentId, 'attachment id expected');
+      const ready = await client.media.waitForAttachment(attachmentId!, { service: 'bluesky', timeoutMs: 60_000 });
+      assert.equal(ready.ready, true);
+    } catch (err) {
+      if (isScopeOrAuth(err)) { skipped = true; console.log('  [skip] no write scope / linked account'); return; }
+      throw err;
+    }
+  });
+
+  it('creates a Bluesky post carrying the attachment', async () => {
+    if (skipped || !attachmentId) return;
+    const post: any = await client.feeds.createPost(
+      { status: `TS SDK media test ${Date.now()} -- safe to delete`, media_ids: [attachmentId] }, 'bluesky');
+    postId = post?.id;
+    assert.ok(String(postId).startsWith('at://'), 'service=bluesky must post to Bluesky');
+    assert.ok(post.media_attachments?.length, 'post must carry the attachment');
+  });
+
+  it('fetches the post via getStatus, getPost and its context', async () => {
+    if (skipped || !postId) return;
+    const status: any = await client.feeds.getStatus(postId, 'bluesky');
+    assert.equal(status.id, postId);
+    const viaPost: any = await client.feeds.getPost(postId);
+    assert.equal(viaPost.id, postId, 'GET /post must resolve an at:// id');
+    const ctx = await client.feeds.getStatusContext(postId, 'bluesky');
+    assert.ok('ancestors' in ctx && 'descendants' in ctx);
+  });
+
+  it('pins and unpins the post', async () => {
+    if (skipped || !postId) return;
+    try {
+      await client.feeds.pin(postId, 'bluesky');
+      await client.feeds.unpin(postId, 'bluesky');
+    } catch (err) {
+      if (err instanceof SurfNotFoundError) { console.log('  [skip] pin not supported by bridge'); return; }
+      throw err;
+    }
+  });
+
+  it('rejects non-public visibility on a Bluesky target with 400', async () => {
+    if (skipped) return;
+    await assert.rejects(
+      client.feeds.createPost({ status: `TS SDK visibility test ${Date.now()}`, visibility: 'direct' }, 'bluesky'),
+      (err: any) => err instanceof SurfAPIError && err.statusCode === 400,
+    );
+  });
+
+  it('rejects an unknown service with 400', async () => {
+    await assert.rejects(
+      client.feeds.createPost({ status: 'TS SDK service test' }, 'threads' as any),
+      (err: any) => err instanceof SurfAPIError && err.statusCode === 400,
+    );
+  });
+
+  after(async () => {
+    if (postId) {
+      try { await client.feeds.deletePost(postId, 'bluesky'); console.log(`  [cleanup] Deleted post ${postId}`); }
+      catch { console.log(`  [cleanup] Could not delete post ${postId}`); }
     }
   });
 });

@@ -3,6 +3,8 @@
 package surf
 
 import (
+	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -48,6 +50,24 @@ func skipOnScope(t *testing.T, err error, msg string) {
 	if errors.As(err, &apiErr) && (apiErr.StatusCode == 401 || apiErr.StatusCode == 403) {
 		t.Skipf("%s: %v", msg, apiErr)
 	}
+	// ?service=X names a network the app owner has no linked account for
+	if errors.As(err, &apiErr) && apiErr.StatusCode == 400 && strings.Contains(apiErr.Message, "No linked") {
+		t.Skipf("%s: %v", msg, apiErr)
+	}
+}
+
+// png2x2 is a valid 2x2 PNG for attachment uploads.
+var png2x2, _ = base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEklEQVR42mP8z8DwHwyBgAEACn4D/Y7q8T4AAAAASUVORK5CYII=")
+
+func isBlueskyID(id string) bool { return strings.HasPrefix(id, "at://") }
+
+func postIDs(t *testing.T, raw json.RawMessage) []map[string]interface{} {
+	t.Helper()
+	var posts []map[string]interface{}
+	if err := json.Unmarshal(raw, &posts); err != nil {
+		t.Fatalf("posts should be a bare array: %v", err)
+	}
+	return posts
 }
 
 // extractFeedID extracts the feed ULID from the create response, stripping the surf/custom/ prefix.
@@ -459,6 +479,186 @@ func TestIntegration(t *testing.T) {
 	})
 
 	// =====================================================================
+	// 3d. Field-report fixes: attachments, single post/thread, pin, services
+	//     forms, GetFollowing, visibility/service validation (Bluesky-targeted)
+	// =====================================================================
+	t.Run("FieldReportFixes", func(t *testing.T) {
+		var attachmentID, postID string
+
+		t.Run("GetFollowingTakesSurfID", func(t *testing.T) {
+			raw, err := client.Feeds.GetFollowing("surf/topic/technology", 5)
+			if err != nil {
+				t.Fatalf("GetFollowing failed: %v", err)
+			}
+			var feeds []map[string]interface{}
+			if err := json.Unmarshal(raw, &feeds); err != nil {
+				t.Fatalf("GetFollowing should return a bare array: %v", err)
+			}
+		})
+
+		t.Run("ServicesBareNamesAndBlueskyOnly", func(t *testing.T) {
+			raw, err := client.Feeds.GetPosts("surf/topic/technology", &PostsOptions{Limit: 10, Services: "surf/service/bluesky"})
+			if err != nil {
+				t.Fatalf("GetPosts(services) failed: %v", err)
+			}
+			posts := postIDs(t, raw)
+			if len(posts) == 0 {
+				t.Fatal("expected posts")
+			}
+			for _, p := range posts {
+				if !isBlueskyID(fmt.Sprint(p["id"])) {
+					t.Fatalf("services=surf/service/bluesky must yield Bluesky posts only, got %v", p["id"])
+				}
+			}
+			if _, err := client.Feeds.GetPosts("surf/topic/technology", &PostsOptions{Limit: 5, Services: "bluesky,rss"}); err != nil {
+				t.Fatalf("bare comma-separated services must be accepted: %v", err)
+			}
+		})
+
+		t.Run("TopicFeedDefaultsAndNoPlaceholders", func(t *testing.T) {
+			raw, err := client.Feeds.GetPosts("surf/topic/technology", &PostsOptions{Limit: 40})
+			if err != nil {
+				t.Fatalf("GetPosts failed: %v", err)
+			}
+			posts := postIDs(t, raw)
+			hasBluesky := false
+			for _, p := range posts {
+				if isBlueskyID(fmt.Sprint(p["id"])) {
+					hasBluesky = true
+				}
+				content, _ := p["content"].(string)
+				media, _ := p["media_attachments"].([]interface{})
+				if content == "" && len(media) == 0 && p["card"] == nil && p["reblog"] == nil && p["quote"] == nil {
+					t.Fatalf("contentless placeholder row: %v", p["id"])
+				}
+			}
+			if !hasBluesky {
+				t.Fatal("API-key topic feeds default to include Bluesky")
+			}
+			if len(posts) != 40 {
+				t.Fatalf("page should be exactly limit (40), got %d", len(posts))
+			}
+		})
+
+		t.Run("UploadAttachment", func(t *testing.T) {
+			raw, err := client.Media.UploadAttachment("sdk-test.png", bytes.NewReader(png2x2), "Go SDK test image", "bluesky")
+			skipOnScope(t, err, "No write scope / linked account")
+			if err != nil {
+				t.Fatalf("UploadAttachment failed: %v", err)
+			}
+			var att map[string]interface{}
+			if err := json.Unmarshal(raw, &att); err != nil {
+				t.Fatalf("attachment should be an object: %v", err)
+			}
+			attachmentID = fmt.Sprint(att["id"])
+			if attachmentID == "" || attachmentID == "<nil>" {
+				t.Fatal("attachment id expected")
+			}
+			if _, err := client.Media.WaitForAttachment(attachmentID, 2*time.Second, 60*time.Second, "bluesky"); err != nil {
+				t.Fatalf("WaitForAttachment failed: %v", err)
+			}
+		})
+
+		t.Cleanup(func() {
+			if postID != "" {
+				t.Logf("Cleanup: deleting bluesky post %s", postID)
+				_ = client.Feeds.DeletePost(postID, "bluesky")
+			}
+		})
+
+		t.Run("CreatePostWithMedia", func(t *testing.T) {
+			if attachmentID == "" {
+				t.Skip("No attachment uploaded")
+			}
+			raw, err := client.Feeds.CreatePostWithOptions(CreatePostOptions{
+				Status:   fmt.Sprintf("Go SDK media test %d -- safe to delete", time.Now().Unix()),
+				MediaIDs: []string{attachmentID},
+				Service:  "bluesky",
+			})
+			skipOnScope(t, err, "No write scope / linked account")
+			if err != nil {
+				t.Fatalf("CreatePostWithOptions failed: %v", err)
+			}
+			var post map[string]interface{}
+			if err := json.Unmarshal(raw, &post); err != nil {
+				t.Fatalf("post should be an object: %v", err)
+			}
+			postID = fmt.Sprint(post["id"])
+			if !isBlueskyID(postID) {
+				t.Fatalf("service=bluesky must post to Bluesky, got id %s", postID)
+			}
+			if media, _ := post["media_attachments"].([]interface{}); len(media) == 0 {
+				t.Fatal("post must carry the uploaded attachment")
+			}
+		})
+
+		t.Run("GetStatusPostAndContext", func(t *testing.T) {
+			if postID == "" {
+				t.Skip("No post created")
+			}
+			raw, err := client.Feeds.GetStatus(postID, "bluesky")
+			if err != nil {
+				t.Fatalf("GetStatus failed: %v", err)
+			}
+			if id, _ := extractPostID(raw); id != postID {
+				t.Fatalf("GetStatus id mismatch: %s", id)
+			}
+			raw, err = client.Feeds.GetPost(postID, false)
+			if err != nil {
+				t.Fatalf("GetPost failed: %v", err)
+			}
+			if id, _ := extractPostID(raw); id != postID {
+				t.Fatalf("GET /post must resolve an at:// id, got %s", id)
+			}
+			raw, err = client.Feeds.GetStatusContext(postID, "bluesky")
+			if err != nil {
+				t.Fatalf("GetStatusContext failed: %v", err)
+			}
+			var ctx map[string]interface{}
+			if err := json.Unmarshal(raw, &ctx); err != nil || ctx["ancestors"] == nil || ctx["descendants"] == nil {
+				t.Fatalf("context should carry ancestors and descendants: %s", string(raw))
+			}
+		})
+
+		t.Run("PinUnpin", func(t *testing.T) {
+			if postID == "" {
+				t.Skip("No post created")
+			}
+			if _, err := client.Feeds.Pin(postID, "bluesky"); err != nil {
+				var apiErr *APIError
+				if errors.As(err, &apiErr) && apiErr.StatusCode == 404 {
+					t.Skip("pin not supported by this account's bridge")
+				}
+				t.Fatalf("Pin failed: %v", err)
+			}
+			if _, err := client.Feeds.Unpin(postID, "bluesky"); err != nil {
+				t.Fatalf("Unpin failed: %v", err)
+			}
+		})
+
+		t.Run("NonPublicVisibilityRejectedOnBluesky", func(t *testing.T) {
+			_, err := client.Feeds.CreatePostWithOptions(CreatePostOptions{
+				Status: fmt.Sprintf("Go SDK visibility test %d", time.Now().Unix()), Visibility: "direct", Service: "bluesky"})
+			skipOnScope(t, err, "No write scope / linked account")
+			var apiErr *APIError
+			if !errors.As(err, &apiErr) || apiErr.StatusCode != 400 {
+				if err == nil {
+					t.Fatal("a direct post to Bluesky must be rejected, not published")
+				}
+				t.Fatalf("expected 400, got %v", err)
+			}
+		})
+
+		t.Run("UnknownServiceRejected", func(t *testing.T) {
+			_, err := client.Feeds.CreatePost("Go SDK service test", "public", "threads")
+			var apiErr *APIError
+			if !errors.As(err, &apiErr) || apiErr.StatusCode != 400 {
+				t.Fatalf("expected 400 invalid_service, got %v", err)
+			}
+		})
+	})
+
+	// =====================================================================
 	// 4. Write Ops (Mastodon)
 	// =====================================================================
 	t.Run("WriteOpsMastodon", func(t *testing.T) {
@@ -822,7 +1022,11 @@ func rtbTestClient(t *testing.T) *RTBClient {
 		t.Skip("SURF_API_TEST_TOKEN not set")
 	}
 	c := NewRTBClient(token)
-	if base := os.Getenv("SURF_API_BASE_URL"); base != "" {
+	// RTB lives on the devportal host (surf.social), not the API host. When the API is
+	// pointed at a local fldaily, SURF_RTB_BASE_URL keeps RTB on a real devportal.
+	if base := os.Getenv("SURF_RTB_BASE_URL"); base != "" {
+		c.BaseURL = strings.TrimRight(base, "/")
+	} else if base := os.Getenv("SURF_API_BASE_URL"); base != "" {
 		base = strings.TrimRight(base, "/")
 		base = strings.TrimSuffix(base, "/v1")
 		c.BaseURL = base
