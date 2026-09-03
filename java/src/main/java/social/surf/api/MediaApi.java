@@ -40,17 +40,15 @@ public class MediaApi {
      * Bluesky video is processed asynchronously: call {@link #waitForAttachment} before posting.
      */
     public Map<String, Object> uploadAttachment(Path file, String contentType, String description, String service) {
-        byte[] bytes;
-        try {
-            bytes = Files.readAllBytes(file);
-        } catch (IOException e) {
-            throw new SurfAPIError("Failed to read file " + file + ": " + e.getMessage());
+        if (!Files.isReadable(file)) {
+            throw new SurfAPIError("Failed to read file " + file);
         }
         String filename = file.getFileName() == null ? "upload" : file.getFileName().toString();
         String path = "/media/attachments" + (service == null ? "" : "?service=" + service);
         Map<String, String> fields = description == null ? null : Map.of("description", description);
+        // Streamed: a video is sent from disk, never held in heap.
         @SuppressWarnings("unchecked")
-        Map<String, Object> result = c.uploadMultipart(path, bytes, filename, contentType, fields, Map.class);
+        Map<String, Object> result = c.uploadMultipartStreaming(path, file, filename, contentType, fields, Map.class);
         return result;
     }
 

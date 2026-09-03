@@ -272,7 +272,8 @@ class _FeedsAPI:
         return self._c._get("/feed", {"surf_id": surf_id})
 
     def get_posts(self, surf_id: str, limit: int = 20, cursor: str = None,
-                  sort: str = None, services=None, since: str = None) -> dict:
+                  sort: str = None, services: "str | List[str] | None" = None,
+                  since: str = None) -> dict:
         """Get posts from a feed.
 
         `since`: recency cutoff for a digest — a rolling duration ('24h', '7d', '30m', '90s',
@@ -285,7 +286,7 @@ class _FeedsAPI:
         })
 
     def iter_posts(self, surf_id: str, limit: int = None, page_size: int = 40,
-                   sort: str = None, services=None) -> Iterator[dict]:
+                   sort: str = None, services: "str | List[str] | None" = None) -> Iterator[dict]:
         """Auto-paginate through all posts in a feed.
 
         Yields individual post dicts. Stops when no more results or `limit` is reached.

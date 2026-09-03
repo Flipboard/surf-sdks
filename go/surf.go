@@ -263,30 +263,38 @@ func (c *Client) doStatus(method, path string, params url.Values, body interface
 }
 
 // doMultipart posts a multipart/form-data body: extra text fields plus one "file" part.
+// The body is streamed through a pipe rather than buffered, so uploading a video costs
+// a fixed amount of memory regardless of its size. Not retried (the reader is consumed).
 func (c *Client) doMultipart(path string, params url.Values, fields map[string]string, filename string, data io.Reader) ([]byte, int, error) {
 	u := c.url(path)
 	if params != nil && len(params) > 0 {
 		u += "?" + params.Encode()
 	}
-	var buf bytes.Buffer
-	w := multipart.NewWriter(&buf)
-	for k, v := range fields {
-		if err := w.WriteField(k, v); err != nil {
-			return nil, 0, err
-		}
-	}
-	part, err := w.CreateFormFile("file", filename)
+	pr, pw := io.Pipe()
+	w := multipart.NewWriter(pw)
+	go func() {
+		err := func() error {
+			for k, v := range fields {
+				if err := w.WriteField(k, v); err != nil {
+					return err
+				}
+			}
+			part, err := w.CreateFormFile("file", filename)
+			if err != nil {
+				return err
+			}
+			if _, err := io.Copy(part, data); err != nil {
+				return err
+			}
+			return w.Close()
+		}()
+		// A nil err closes the pipe normally; a non-nil one surfaces to the HTTP client as
+		// the body read error, so a failing reader fails the request instead of truncating it.
+		_ = pw.CloseWithError(err)
+	}()
+	req, err := http.NewRequest("POST", u, pr)
 	if err != nil {
-		return nil, 0, err
-	}
-	if _, err := io.Copy(part, data); err != nil {
-		return nil, 0, err
-	}
-	if err := w.Close(); err != nil {
-		return nil, 0, err
-	}
-	req, err := http.NewRequest("POST", u, &buf)
-	if err != nil {
+		_ = pr.Close()
 		return nil, 0, err
 	}
 	req.Header.Set("X-API-Key", c.APIKey)
