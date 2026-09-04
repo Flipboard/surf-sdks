@@ -175,7 +175,7 @@ export class SurfClient {
 
     const headers: Record<string, string> = {
       'X-API-Key': this.apiKey,
-      'User-Agent': 'surf-api-ts/1.0.0',
+      'User-Agent': 'surf-api-ts/1.3.0',
     };
     let body: string | undefined;
     if (opts?.json !== undefined) {
@@ -1285,7 +1285,7 @@ export class SurfRTBClient {
     if (params) Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
     const headers: Record<string, string> = {
       'X-API-Key': this.apiKey,
-      'User-Agent': 'surf-api-ts/1.0.0',
+      'User-Agent': 'surf-api-ts/1.3.0',
       'Accept': 'application/json',
     };
     // Only advertise a JSON body Content-Type when there actually is one

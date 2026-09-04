@@ -66,7 +66,7 @@ public class SurfClient {
 
     /** Internal path prefix — the SDK handles this automatically. */
     static final String API_PREFIX = "/v1";
-    static final String USER_AGENT = "surf-api-java/1.0.0";
+    static final String USER_AGENT = "surf-api-java/1.3.0";
 
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(30);
 

@@ -28,7 +28,7 @@ const (
 	DefaultBaseURL      = "https://api.surf.social"
 	DefaultDevportalURL = "https://surf.social/devportal/v1"
 	apiPrefix           = "/v1"
-	userAgent           = "surf-api-go/1.0.0"
+	userAgent           = "surf-api-go/1.3.0"
 )
 
 // Client is the Surf API client.

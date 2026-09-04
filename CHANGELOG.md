@@ -6,6 +6,8 @@ All notable changes to the Surf API SDKs will be documented here. All SDKs share
 
 ## Unreleased
 
+## v1.3.0 -- 2026-09-04
+
 ### Added
 - **Post attachments** (Python sync+async, TypeScript, Go, Java) — `POST /media/attachments` uploads an image or video to the acting linked account and returns a Mastodon-shaped attachment whose `id` goes in the new `media_ids` of create-post; `GET /media/attachments/{id}` reports readiness (HTTP 206 while Bluesky video is still processing; surfaced as a `ready` boolean), and a `wait_for_attachment` / `waitForAttachment` / `WaitForAttachment` helper polls it. `client.media.upload_attachment(path, content_type, description=…, service=…)` + `create_post(..., media_ids=[…])` (Python); `client.media.uploadAttachment(file, filename, { description?, service? })` + `createPost({ ..., media_ids })` (TypeScript); `client.Media.UploadAttachment(filename, reader, description, service…)` + `Feeds.CreatePostWithOptions(CreatePostOptions{MediaIDs: …})` (Go — `Media.Upload` is also implemented now, it previously returned "not yet implemented"); `client.media.uploadAttachment(path, contentType, description, service)` + the new 8-arg `createPost(..., mediaIds)` (Java). `media.upload` remains the feed-cover image upload; its URL cannot be attached to a post.
 - **Single post and thread** — `get_status(id)` / `getStatus(id)` / `GetStatus(id)` / `getStatus(id)` (`GET /statuses/{id}`, `at://` ids encoded for you) and `get_status_context` / `getStatusContext` / `GetStatusContext` / `getStatusContext` (`GET /statuses/{id}/context`, `{ancestors, descendants}` without the subject post). `get_post` continues to work and now accepts Surf post ids server-side.

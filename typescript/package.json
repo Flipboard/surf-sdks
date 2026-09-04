@@ -1,6 +1,6 @@
 {
   "name": "@surf/api",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "TypeScript/JavaScript SDK for the Surf social platform API",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
