@@ -8,8 +8,10 @@
 # What it does, in order:
 #   1. Preflight: valid semver, on `main`, clean tree, (optionally) tests green.
 #   2. Bump the version in all version files (Python, TypeScript, Java; Go uses
-#      the git tag, so no file). Keeps them in lock-step — this is what stops the
-#      "tagged vX but files still say vY" drift.
+#      the git tag, so no file) AND the in-code version strings each SDK reports
+#      (Python __version__, and the User-Agent in TypeScript, Go and Java). Keeps
+#      them in lock-step — this is what stops the "tagged vX but files still say
+#      vY" drift (the UA strings sat at 1.0.0 through v1.2.0).
 #   3. Roll the CHANGELOG: rename `## Unreleased` -> `## v<version> -- <date>` and
 #      open a fresh empty `## Unreleased`.
 #   4. Commit "Release v<version>", annotate-tag `v<version>`, and (unless
@@ -98,6 +100,21 @@ assert s != s2, "build.gradle version not updated"
 open(p, "w").write(s2)
 PY
 
+# In-code version strings (what the SDKs report about themselves at runtime).
+python3 - "$VERSION" <<'PY'
+import re, sys
+v = sys.argv[1]
+def bump(path, pattern, repl):
+    s = open(path).read()
+    s2, n = re.subn(pattern, repl, s)
+    assert n >= 1, f"{path}: pattern not found"
+    open(path, "w").write(s2)
+bump("python/src/surf_api/__init__.py", r'(?m)^__version__\s*=\s*"[0-9]+\.[0-9]+\.[0-9]+"', f'__version__ = "{v}"')
+bump("typescript/src/index.ts",  r"surf-api-ts/[0-9]+\.[0-9]+\.[0-9]+",   f"surf-api-ts/{v}")
+bump("go/surf.go",               r'surf-api-go/[0-9]+\.[0-9]+\.[0-9]+',   f"surf-api-go/{v}")
+bump("java/src/main/java/social/surf/api/SurfClient.java", r'surf-api-java/[0-9]+\.[0-9]+\.[0-9]+', f"surf-api-java/{v}")
+PY
+
 # --- 3. Roll the CHANGELOG ---
 echo "==> rolling CHANGELOG (Unreleased -> $TAG -- $DATE)"
 python3 - "$VERSION" "$DATE" <<'PY'
@@ -117,12 +134,14 @@ PY
 # --- 4. Commit, tag, push ---
 if [ "$DRY_RUN" = true ]; then
   echo "==> --dry-run: changes made but NOT committed. Diff:"
-  git --no-pager diff -- python/pyproject.toml typescript/package.json java/build.gradle CHANGELOG.md
+  git --no-pager diff -- python/pyproject.toml typescript/package.json java/build.gradle CHANGELOG.md \
+    python/src/surf_api/__init__.py typescript/src/index.ts go/surf.go java/src/main/java/social/surf/api/SurfClient.java
   echo "==> (dry run) would: git commit -m 'Release $TAG'; git tag -a $TAG; git push origin main --follow-tags"
   exit 0
 fi
 
-git add python/pyproject.toml typescript/package.json java/build.gradle CHANGELOG.md
+git add python/pyproject.toml typescript/package.json java/build.gradle CHANGELOG.md \
+  python/src/surf_api/__init__.py typescript/src/index.ts go/surf.go java/src/main/java/social/surf/api/SurfClient.java
 git commit -m "Release $TAG"
 git tag -a "$TAG" -m "Release $TAG"
 echo "==> committed + tagged $TAG"
