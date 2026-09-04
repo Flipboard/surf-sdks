@@ -78,6 +78,8 @@ tasks.register('integrationTest', Test) {
     // Pass env vars through to the test JVM
     environment 'SURF_API_TEST_TOKEN', System.getenv('SURF_API_TEST_TOKEN') ?: ''
     environment 'SURF_API_BASE_URL', System.getenv('SURF_API_BASE_URL') ?: ''
+    // RTB lives on the devportal host; lets a run against a local fldaily keep RTB on a real devportal
+    environment 'SURF_RTB_BASE_URL', System.getenv('SURF_RTB_BASE_URL') ?: ''
 }
 
 publishing {

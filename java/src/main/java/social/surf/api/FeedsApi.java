@@ -58,13 +58,35 @@ public class FeedsApi {
     }
 
     /** Get feeds the authenticated user follows (default limit 50). */
-    public List<Map<String, Object>> getFollowing() {
-        return getFollowing(50);
+    public List<Map<String, Object>> getFollowing(String surfId) {
+        return getFollowing(surfId, 50);
     }
 
-    /** Get feeds the authenticated user follows. */
-    public List<Map<String, Object>> getFollowing(int limit) {
-        return c.getMapList("/feed/following", map("limit", limit));
+    /**
+     * Public custom feeds that include {@code surfId} as a source (a reverse lookup). Not the
+     * caller's subscriptions; those are {@code feedPins} in {@code preferences.get()}.
+     */
+    public List<Map<String, Object>> getFollowing(String surfId, int limit) {
+        List<Map<String, Object>> r = c.getMapList("/feed/following", map("surf_id", surfId, "limit", limit));
+        return r == null ? List.of() : r;
+    }
+
+    /** A single post by id ({@code GET /statuses/{id}}); {@code at://} ids are encoded for you. */
+    public Map<String, Object> getStatus(String postId) {
+        return getStatus(postId, null);
+    }
+
+    public Map<String, Object> getStatus(String postId, String service) {
+        return c.get(servicePath("/statuses/" + enc(postId), service));
+    }
+
+    /** The thread around a post: {@code {ancestors, descendants}}; the subject post is not included. */
+    public Map<String, Object> getStatusContext(String postId) {
+        return getStatusContext(postId, null);
+    }
+
+    public Map<String, Object> getStatusContext(String postId, String service) {
+        return c.get(servicePath("/statuses/" + enc(postId) + "/context", service));
     }
 
     /** Get the user's speed dial feeds. */
@@ -104,10 +126,26 @@ public class FeedsApi {
     public Map<String, Object> createPost(String status, String visibility, String inReplyToId,
                                           boolean sensitive, String spoilerText, String language,
                                           String service) {
+        return createPost(status, visibility, inReplyToId, sensitive, spoilerText, language, service, null);
+    }
+
+    /**
+     * Create a new post with full options and media.
+     *
+     * <p>{@code service} picks the linked account ("bluesky" or "mastodon"; default Bluesky, then
+     * Mastodon). Replying to a Mastodon post (numeric {@code inReplyToId}) requires "mastodon".
+     * {@code visibility} is honoured on Mastodon only: Bluesky posts are always public and a
+     * non-public value is rejected with 400. {@code mediaIds} come from
+     * {@link MediaApi#uploadAttachment} (max 4).
+     */
+    public Map<String, Object> createPost(String status, String visibility, String inReplyToId,
+                                          boolean sensitive, String spoilerText, String language,
+                                          String service, List<String> mediaIds) {
         Map<String, Object> body = map(
                 "status", status,
                 "visibility", visibility,
                 "in_reply_to_id", inReplyToId,
+                "media_ids", mediaIds == null || mediaIds.isEmpty() ? null : mediaIds,
                 "sensitive", sensitive ? Boolean.TRUE : null,
                 "spoiler_text", spoilerText,
                 "language", language);
@@ -167,6 +205,24 @@ public class FeedsApi {
 
     public Map<String, Object> unbookmark(String postId, String service) {
         return c.post(servicePath("/statuses/" + enc(postId) + "/unbookmark", service));
+    }
+
+    /** Pin one of your own posts to your profile ({@code write:statuses}). */
+    public Map<String, Object> pin(String postId) {
+        return pin(postId, null);
+    }
+
+    public Map<String, Object> pin(String postId, String service) {
+        return c.post(servicePath("/statuses/" + enc(postId) + "/pin", service));
+    }
+
+    /** Unpin a post from your profile ({@code write:statuses}). */
+    public Map<String, Object> unpin(String postId) {
+        return unpin(postId, null);
+    }
+
+    public Map<String, Object> unpin(String postId, String service) {
+        return c.post(servicePath("/statuses/" + enc(postId) + "/unpin", service));
     }
 
     /** Delete own post ({@code write:statuses}). */

@@ -369,17 +369,39 @@ class FeedsAPI {
    * ('24h', '7d', '30m', '90s', or a bare number of seconds) or an absolute ISO 8601
    * timestamp; only posts created at or after the cutoff are returned.
    */
-  getPosts(surf_id: string, opts?: { limit?: number; cursor?: string; sort?: string; services?: string; since?: string }): Promise<Post[]> {
+  getPosts(surf_id: string, opts?: { limit?: number; cursor?: string; sort?: string;
+    /** Networks to include. Canonical form is service ids, repeated: ['surf/service/bluesky', 'surf/service/mastodon']; bare names ('bluesky' or 'bluesky,rss') also work. Default: mastodon, rss, patreon, bluesky. */
+    services?: string | string[]; since?: string }): Promise<Post[]> {
     return this.c._get('/feed/posts', { surf_id, ...opts });
   }
   getPost(id: string, thread = false) {
     return this.c._get('/post', { id, thread: thread ? 'true' : undefined });
   }
-  getFollowing(limit = 50) { return this.c._get('/feed/following', { limit }); }
+  /** A single post by id (`GET /statuses/{id}`); `at://` ids are encoded for you. */
+  getStatus(id: string, service?: 'bluesky' | 'mastodon'): Promise<Post> {
+    return this.c._get(`/statuses/${encodeURIComponent(id)}`, { service });
+  }
+  /** The thread around a post: `{ancestors, descendants}` (the subject post is not included). */
+  getStatusContext(id: string, service?: 'bluesky' | 'mastodon'): Promise<{ ancestors: Post[]; descendants: Post[] }> {
+    return this.c._get(`/statuses/${encodeURIComponent(id)}/context`, { service });
+  }
+  /**
+   * Public custom feeds that include `surf_id` as a source (a reverse lookup). Not the
+   * caller's subscriptions; those are `feedPins` in `client.preferences.get()`.
+   */
+  getFollowing(surf_id: string, limit = 50): Promise<FeedMeta[]> {
+    return this.c._get('/feed/following', { surf_id, limit }).then((r: any) => r ?? []);
+  }
   getSpeedDial() { return this.c._get('/feed/speeddial'); }
 
   // Write operations (require write:statuses scope)
-  createPost(body: { status: string; visibility?: string; in_reply_to_id?: string; sensitive?: boolean; spoiler_text?: string }, service?: 'bluesky' | 'mastodon') {
+  /**
+   * Create a post (`write:statuses`). `service` picks the linked account (default Bluesky, then
+   * Mastodon); replying to a Mastodon post needs `'mastodon'`. `visibility` is honoured on
+   * Mastodon only: Bluesky posts are always public and a non-public value is rejected with 400.
+   * `media_ids` come from {@link MediaAPI.uploadAttachment} (max 4).
+   */
+  createPost(body: { status: string; visibility?: string; in_reply_to_id?: string; sensitive?: boolean; spoiler_text?: string; language?: string; media_ids?: string[] }, service?: 'bluesky' | 'mastodon') {
     return this.c._request('POST', '/statuses', { json: body, params: service ? { service } : undefined });
   }
   favourite(id: string, service?: 'bluesky' | 'mastodon') {
@@ -396,6 +418,12 @@ class FeedsAPI {
   }
   bookmark(id: string, service?: 'bluesky' | 'mastodon') {
     return this.c._request('POST', `/statuses/${encodeURIComponent(id)}/bookmark`, { params: service ? { service } : undefined });
+  }
+  pin(id: string, service?: 'bluesky' | 'mastodon') {
+    return this.c._request('POST', `/statuses/${encodeURIComponent(id)}/pin`, { params: service ? { service } : undefined });
+  }
+  unpin(id: string, service?: 'bluesky' | 'mastodon') {
+    return this.c._request('POST', `/statuses/${encodeURIComponent(id)}/unpin`, { params: service ? { service } : undefined });
   }
   unbookmark(id: string, service?: 'bluesky' | 'mastodon') {
     return this.c._request('POST', `/statuses/${encodeURIComponent(id)}/unbookmark`, { params: service ? { service } : undefined });
@@ -954,6 +982,7 @@ class CustomFeedsAPI {
 class MediaAPI {
   constructor(private c: SurfClient) {}
 
+  /** Upload an image and get a hosted URL, for feed cover images. Not attachable to a post; see {@link uploadAttachment}. */
   async upload(file: Blob | File, filename = 'image.jpg'): Promise<any> {
     const form = new FormData();
     form.append('file', file, filename);
@@ -965,6 +994,52 @@ class MediaAPI {
     });
     if (!resp.ok) throw new SurfAPIError(resp.statusText, resp.status);
     return resp.json();
+  }
+
+  /**
+   * Upload an image or video as a post attachment (`write:statuses`). Returns a Mastodon-shaped
+   * media attachment; pass its `id` in `media_ids` of {@link FeedsAPI.createPost}. The attachment
+   * belongs to the acting linked account (`service`) and is only valid for a post from the same
+   * account. Bluesky video is processed asynchronously: {@link waitForAttachment} before posting.
+   */
+  async uploadAttachment(file: Blob | File, filename = 'image.jpg', opts?: { description?: string; service?: 'bluesky' | 'mastodon' }): Promise<any> {
+    const form = new FormData();
+    form.append('file', file, filename);
+    if (opts?.description) form.append('description', opts.description);
+    let url = `${(this.c as any).baseUrl}${API_PREFIX}/media/attachments`;
+    if (opts?.service) url += `?service=${encodeURIComponent(opts.service)}`;
+    const resp = await ((this.c as any)._fetch as typeof fetch)(url, {
+      method: 'POST',
+      headers: { 'X-API-Key': (this.c as any).apiKey },
+      body: form,
+    });
+    if (!resp.ok) throw new SurfAPIError(resp.statusText, resp.status);
+    return resp.json();
+  }
+
+  /** Fetch an attachment. `ready` is false while it is still processing (HTTP 206). */
+  async getAttachment(id: string, service?: 'bluesky' | 'mastodon'): Promise<any & { ready: boolean }> {
+    let url = `${(this.c as any).baseUrl}${API_PREFIX}/media/attachments/${encodeURIComponent(id)}`;
+    if (service) url += `?service=${encodeURIComponent(service)}`;
+    const resp = await ((this.c as any)._fetch as typeof fetch)(url, {
+      headers: { 'X-API-Key': (this.c as any).apiKey, Accept: 'application/json' },
+    });
+    if (!resp.ok) throw new SurfAPIError(resp.statusText, resp.status);
+    const text = await resp.text();
+    const body = text ? JSON.parse(text) : {};
+    return { ...body, ready: resp.status === 200 };
+  }
+
+  /** Poll {@link getAttachment} until it is ready (HTTP 200) or `timeoutMs` elapses. */
+  async waitForAttachment(id: string, opts?: { service?: 'bluesky' | 'mastodon'; pollMs?: number; timeoutMs?: number }): Promise<any> {
+    const pollMs = opts?.pollMs ?? 2000;
+    const deadline = Date.now() + (opts?.timeoutMs ?? 180_000);
+    for (;;) {
+      const att = await this.getAttachment(id, opts?.service);
+      if (att.ready) return att;
+      if (Date.now() >= deadline) throw new SurfAPIError(`attachment ${id} not ready after ${opts?.timeoutMs ?? 180_000}ms`, 0);
+      await new Promise(r => setTimeout(r, pollMs));
+    }
   }
 
   /**

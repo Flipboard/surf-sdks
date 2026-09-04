@@ -252,6 +252,15 @@ class SurfClient:
 # Feeds
 # ==========================================================================
 
+
+def _services_param(services):
+    """services= as the API wants it: a list becomes repeated params; a string passes through."""
+    if services is None:
+        return None
+    if isinstance(services, str):
+        return services
+    return [str(x) for x in services]
+
 class _FeedsAPI:
     """Feed operations (read:feeds scope)."""
 
@@ -263,7 +272,8 @@ class _FeedsAPI:
         return self._c._get("/feed", {"surf_id": surf_id})
 
     def get_posts(self, surf_id: str, limit: int = 20, cursor: str = None,
-                  sort: str = None, services: str = None, since: str = None) -> dict:
+                  sort: str = None, services: "str | List[str] | None" = None,
+                  since: str = None) -> dict:
         """Get posts from a feed.
 
         `since`: recency cutoff for a digest — a rolling duration ('24h', '7d', '30m', '90s',
@@ -272,11 +282,11 @@ class _FeedsAPI:
         """
         return self._c._get("/feed/posts", {
             "surf_id": surf_id, "limit": limit, "cursor": cursor,
-            "sort": sort, "services": services, "since": since,
+            "sort": sort, "services": _services_param(services), "since": since,
         })
 
     def iter_posts(self, surf_id: str, limit: int = None, page_size: int = 40,
-                   sort: str = None, services: str = None) -> Iterator[dict]:
+                   sort: str = None, services: "str | List[str] | None" = None) -> Iterator[dict]:
         """Auto-paginate through all posts in a feed.
 
         Yields individual post dicts. Stops when no more results or `limit` is reached.
@@ -286,7 +296,7 @@ class _FeedsAPI:
             limit: Max total posts to yield (None = no limit)
             page_size: Posts per API call (default 40)
             sort: Sort order (recent or top)
-            services: Filter by service (mastodon, bluesky, rss)
+            services: Restrict to networks. Canonical form is a list of service ids (["surf/service/bluesky", "surf/service/mastodon"]); bare names ('bluesky', 'bluesky,rss') are also accepted. Default: mastodon, rss, patreon, bluesky.
         """
         cursor = None
         fetched = 0
@@ -311,9 +321,23 @@ class _FeedsAPI:
         """Get a single post by ID, optionally with thread context."""
         return self._c._get("/post", {"id": post_id, "thread": str(thread).lower()})
 
-    def get_following(self, limit: int = 50) -> dict:
-        """Get feeds the authenticated user follows."""
-        return self._c._get("/feed/following", {"limit": limit})
+    def get_following(self, surf_id: str, limit: int = 50) -> list:
+        """Public custom feeds that include ``surf_id`` as a source (a reverse lookup).
+
+        This is not the caller's subscriptions; those are ``feedPins`` in
+        ``client.preferences.get()``. Returns a bare list (empty when nothing matches).
+        """
+        return self._c._get("/feed/following", {"surf_id": surf_id, "limit": limit}) or []
+
+    def get_status(self, post_id: str, service: str = None) -> dict:
+        """Get a single post by id (``GET /statuses/{id}``); ``at://`` ids are encoded for you."""
+        path = f"/statuses/{quote(post_id, safe='')}"
+        return self._c._get(path, {"service": service})
+
+    def get_status_context(self, post_id: str, service: str = None) -> dict:
+        """The thread around a post: ``{"ancestors": [...], "descendants": [...]}`` (subject post excluded)."""
+        path = f"/statuses/{quote(post_id, safe='')}/context"
+        return self._c._get(path, {"service": service})
 
     def get_speeddial(self) -> dict:
         """Get the user's speed dial feeds."""
@@ -330,15 +354,21 @@ class _FeedsAPI:
     def create_post(self, status: str, visibility: str = "public",
                     in_reply_to_id: str = None, sensitive: bool = False,
                     spoiler_text: str = None, language: str = None,
-                    service: str = None) -> dict:
+                    service: str = None, media_ids: List[str] = None) -> dict:
         """Create a new post (write:statuses). Use OAuth token for user-delegated posting.
 
         Args:
-            service: Optional target service ('bluesky' or 'mastodon').
+            service: Target service ('bluesky' or 'mastodon'). Default: Bluesky, then Mastodon.
+                Replying to a Mastodon post (numeric ``in_reply_to_id``) requires 'mastodon'.
+            visibility: Honoured on Mastodon only. Bluesky posts are always public and a
+                non-public value is rejected with 400.
+            media_ids: Attachment ids from :meth:`_MediaAPI.upload_attachment` (max 4).
         """
         body = {"status": status, "visibility": visibility}
         if in_reply_to_id:
             body["in_reply_to_id"] = in_reply_to_id
+        if media_ids:
+            body["media_ids"] = list(media_ids)
         if sensitive:
             body["sensitive"] = True
         if spoiler_text:
@@ -401,6 +431,20 @@ class _FeedsAPI:
             service: Optional target service ('bluesky' or 'mastodon').
         """
         path = f"/statuses/{quote(post_id, safe='')}/bookmark"
+        if service:
+            path += f"?service={service}"
+        return self._c._post(path)
+
+    def pin(self, post_id: str, service: str = None) -> dict:
+        """Pin one of your own posts to your profile (write:statuses)."""
+        path = f"/statuses/{quote(post_id, safe='')}/pin"
+        if service:
+            path += f"?service={service}"
+        return self._c._post(path)
+
+    def unpin(self, post_id: str, service: str = None) -> dict:
+        """Unpin a post from your profile (write:statuses)."""
+        path = f"/statuses/{quote(post_id, safe='')}/unpin"
         if service:
             path += f"?service={service}"
         return self._c._post(path)
@@ -1417,7 +1461,10 @@ class _MediaAPI:
         self._c = client
 
     def upload(self, file_path: str, content_type: str = "image/jpeg") -> dict:
-        """Upload a media file (image)."""
+        """Upload an image and get a hosted URL, for feed cover images.
+
+        The URL cannot be attached to a post; use :meth:`upload_attachment` for post media.
+        """
         with open(file_path, "rb") as f:
             resp = self._c._session.post(
                 self._c._url("/media/upload"),
@@ -1427,6 +1474,50 @@ class _MediaAPI:
         self._c.rate_limit = RateLimitInfo(resp.headers)
         self._c._check_errors(resp)
         return resp.json()
+
+    def upload_attachment(self, file_path: str, content_type: str = "image/jpeg",
+                          description: str = None, service: str = None) -> dict:
+        """Upload an image or video as a post attachment (write:statuses).
+
+        Returns a Mastodon-shaped media attachment; pass its ``id`` in ``media_ids`` of
+        :meth:`_FeedsAPI.create_post`. The attachment belongs to the acting linked account
+        (``service``) and is only valid for a post from the same account. Bluesky video is
+        processed asynchronously: call :meth:`wait_for_attachment` before posting.
+        """
+        data = {"description": description} if description else None
+        params = {"service": service} if service else None
+        with open(file_path, "rb") as f:
+            resp = self._c._session.post(
+                self._c._url("/media/attachments"),
+                files={"file": (file_path, f, content_type)},
+                data=data, params=params,
+                timeout=self._c.timeout,
+            )
+        self._c.rate_limit = RateLimitInfo(resp.headers)
+        self._c._check_errors(resp)
+        return resp.json()
+
+    def get_attachment(self, attachment_id: str, service: str = None) -> dict:
+        """Fetch an attachment. ``ready`` is added to the result: False while still processing (HTTP 206)."""
+        resp = self._c._request_raw("GET", f"/media/attachments/{quote(attachment_id, safe='')}",
+                                    params=_clean({"service": service}))
+        body = resp.json() if resp.content else {}
+        body["ready"] = resp.status_code == 200
+        return body
+
+    def wait_for_attachment(self, attachment_id: str, service: str = None,
+                            poll_interval: float = 2.0, timeout: float = 180.0) -> dict:
+        """Poll :meth:`get_attachment` until the attachment is ready (HTTP 200) or ``timeout`` elapses."""
+        import time as _time
+        deadline = _time.monotonic() + timeout
+        while True:
+            att = self.get_attachment(attachment_id, service=service)
+            if att.get("ready"):
+                return att
+            if _time.monotonic() >= deadline:
+                raise SurfAPIError(f"attachment {attachment_id} not ready after {timeout}s",
+                                   status_code=0, error_code="attachment_timeout")
+            _time.sleep(poll_interval)
 
     def generate_image(self, prompt: str, skip_refiner: bool = False) -> dict:
         """Start AI generation of a feed cover image (Stable Diffusion XL).

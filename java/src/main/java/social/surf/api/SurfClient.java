@@ -273,6 +273,27 @@ public class SurfClient {
     }
 
     /** GET returning a JSON array of objects as {@code List<Map<String, Object>>} (e.g. posts). */
+    /**
+     * GET that also reports the HTTP status: the returned map carries {@code ready} =
+     * {@code true} for 200 and {@code false} for 206 (media still processing).
+     */
+    Map<String, Object> getWithStatus(String path) {
+        // Through execute(): retries, rate-limit bookkeeping and typed errors for 4xx/5xx, so a
+        // poll on a missing or forbidden attachment throws instead of reporting ready=false.
+        HttpResponse<byte[]> resp = execute("GET", path, null, null, timeout);
+        Map<String, Object> result = new LinkedHashMap<>();
+        byte[] body = resp.body();
+        if (body != null && body.length > 0) {
+            try {
+                result.putAll(mapper.readValue(body, new TypeReference<Map<String, Object>>() {}));
+            } catch (IOException e) {
+                throw new SurfAPIError("Failed to parse response from " + path + ": " + e.getMessage());
+            }
+        }
+        result.put("ready", resp.statusCode() == 200);
+        return result;
+    }
+
     List<Map<String, Object>> getMapList(String path, Map<String, Object> params) {
         HttpResponse<byte[]> resp = execute("GET", path, params, null, timeout);
         byte[] body = resp.body();
@@ -350,9 +371,81 @@ public class SurfClient {
      * binary uploads are handled by callers that manage their own retry/resume strategy.
      */
     <T> T uploadMultipart(String path, byte[] fileBytes, String filename, String contentType, Class<T> type) {
+        return uploadMultipart(path, fileBytes, filename, contentType, null, type);
+    }
+
+    /**
+     * Streaming multipart upload of a file: the request body is head bytes + the file's
+     * InputStream + tail bytes, so a video is never materialized in heap. The stream supplier
+     * is re-invoked if the HTTP client needs to resend.
+     */
+    <T> T uploadMultipartStreaming(String path, java.nio.file.Path file, String filename, String contentType,
+                                   Map<String, String> fields, Class<T> type) {
+        String boundary = "----SurfBoundary" + UUID.randomUUID().toString().replace("-", "");
+        StringBuilder head = new StringBuilder();
+        if (fields != null) {
+            for (Map.Entry<String, String> f : fields.entrySet()) {
+                if (f.getValue() == null) continue;
+                head.append("--").append(boundary).append("\r\n")
+                    .append("Content-Disposition: form-data; name=\"").append(f.getKey()).append("\"\r\n\r\n")
+                    .append(f.getValue()).append("\r\n");
+            }
+        }
+        head.append("--").append(boundary).append("\r\n")
+            .append("Content-Disposition: form-data; name=\"file\"; filename=\"").append(filename).append("\"\r\n")
+            .append("Content-Type: ").append(contentType).append("\r\n\r\n");
+        byte[] headBytes = head.toString().getBytes(StandardCharsets.UTF_8);
+        byte[] tailBytes = ("\r\n--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8);
+        java.util.function.Supplier<java.io.InputStream> body = () -> {
+            try {
+                return new java.io.SequenceInputStream(Collections.enumeration(List.of(
+                    new java.io.ByteArrayInputStream(headBytes),
+                    java.nio.file.Files.newInputStream(file),
+                    new java.io.ByteArrayInputStream(tailBytes))));
+            } catch (IOException e) {
+                throw new SurfAPIError("Failed to read file " + file + ": " + e.getMessage());
+            }
+        };
+
+        HttpRequest req = HttpRequest.newBuilder()
+                .uri(URI.create(url(path)))
+                .timeout(timeout)
+                .header("X-API-Key", apiKey)
+                .header("Accept", "application/json")
+                .header("User-Agent", USER_AGENT)
+                .header("Content-Type", "multipart/form-data; boundary=" + boundary)
+                .POST(HttpRequest.BodyPublishers.ofInputStream(body))
+                .build();
+
+        HttpResponse<byte[]> resp = send(req, path);
+        this.rateLimit = new RateLimitInfo(resp.headers());
+        checkErrors(resp.statusCode(), resp.headers(), resp.body());
+        byte[] respBody = resp.body();
+        if (resp.statusCode() == 204 || respBody == null || respBody.length == 0) {
+            return null;
+        }
+        try {
+            return mapper.readValue(respBody, type);
+        } catch (IOException e) {
+            throw new SurfAPIError("Failed to parse response from " + path + ": " + e.getMessage());
+        }
+    }
+
+    /** Multipart upload with extra text form fields (null values skipped) before the "file" part. */
+    <T> T uploadMultipart(String path, byte[] fileBytes, String filename, String contentType,
+                          Map<String, String> fields, Class<T> type) {
         String boundary = "----SurfBoundary" + UUID.randomUUID().toString().replace("-", "");
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         try {
+            if (fields != null) {
+                for (Map.Entry<String, String> f : fields.entrySet()) {
+                    if (f.getValue() == null) continue;
+                    String part = "--" + boundary + "\r\n"
+                            + "Content-Disposition: form-data; name=\"" + f.getKey() + "\"\r\n\r\n"
+                            + f.getValue() + "\r\n";
+                    out.write(part.getBytes(StandardCharsets.UTF_8));
+                }
+            }
             String head = "--" + boundary + "\r\n"
                     + "Content-Disposition: form-data; name=\"file\"; filename=\"" + filename + "\"\r\n"
                     + "Content-Type: " + contentType + "\r\n\r\n";
