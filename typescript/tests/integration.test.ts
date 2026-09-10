@@ -210,6 +210,92 @@ describe('Custom Feeds', { concurrency: false }, () => {
 });
 
 // ---------------------------------------------------------------------------
+// 3a. Sonars
+// ---------------------------------------------------------------------------
+
+describe('Sonars', { concurrency: false }, () => {
+  const spec = { subject: { hashtags: ['#surfsdktest'] }, surfaces: ['bluesky', 'mastodon'] };
+  let sonarId: string | null = null;
+  let skipped = false;
+
+  it('should preview a spec', async () => {
+    try {
+      const preview = await client.sonars.preview(spec, { days: 7 });
+      assert.equal(preview.window_days, 7);
+      assert.ok(Array.isArray(preview.per_day) && Array.isArray(preview.samples));
+    } catch (err) {
+      if (isScopeOrAuth(err)) { skipped = true; console.log('  [skip] Token lacks write:sonars scope'); return; }
+      throw err;
+    }
+  });
+
+  it('should create a sonar', async () => {
+    if (skipped) return;
+    try {
+      const sonar = await client.sonars.create({ name: `SDK Test ${Date.now()}`, spec, daily_cap: 5 });
+      sonarId = sonar.id;
+      assert.ok(sonarId, 'Should return a sonar id');
+      assert.equal(sonar.enabled, true);
+      assert.equal(sonar.cadence, 'instant');
+      assert.deepEqual(sonar.channels, [{ type: 'push' }]);
+      assert.equal(sonar.daily_cap, 5);
+    } catch (err) {
+      if (isScopeOrAuth(err)) { skipped = true; console.log('  [skip] Token lacks write:sonars scope'); return; }
+      throw err;
+    }
+  });
+
+  it('should get and list', async () => {
+    if (skipped || !sonarId) return;
+    const sonar = await client.sonars.get(sonarId);
+    assert.equal(sonar.id, sonarId);
+    const all = await client.sonars.list();
+    assert.ok(all.some((s) => s.id === sonarId));
+  });
+
+  it('should PATCH only the fields given and clear the cap with null', async () => {
+    if (skipped || !sonarId) return;
+    const updated = await client.sonars.update(sonarId, { name: 'SDK Test renamed', enabled: false });
+    assert.equal(updated.name, 'SDK Test renamed');
+    assert.equal(updated.enabled, false);
+    assert.equal(updated.daily_cap, 5, 'an omitted field is left alone');
+    const cleared = await client.sonars.update(sonarId, { daily_cap: null });
+    assert.equal(cleared.daily_cap ?? null, null, 'an explicit null clears the cap');
+  });
+
+  it('should page the match ledger', async () => {
+    if (skipped || !sonarId) return;
+    const page = await client.sonars.matches(sonarId, { limit: 5 });
+    assert.ok(Array.isArray(page.matches));
+    assert.ok('next_before' in page);
+    const walked: unknown[] = [];
+    for await (const m of client.sonars.iterMatches(sonarId, { limit: 5 })) walked.push(m);
+    assert.deepEqual(walked, page.matches.slice(0, 5));
+  });
+
+  it('should reject a spec that does not compile with a 400', async () => {
+    if (skipped) return;
+    await assert.rejects(
+      client.sonars.preview({ subject: { query: 'ab' } }),
+      (err: unknown) => err instanceof SurfAPIError && err.statusCode === 400, // every text term >= 3 chars
+    );
+  });
+
+  it('should delete', async () => {
+    if (skipped || !sonarId) return;
+    await client.sonars.delete(sonarId);
+    await assert.rejects(client.sonars.get(sonarId), (err: unknown) => err instanceof SurfNotFoundError);
+    sonarId = null;
+  });
+
+  after(async () => {
+    if (sonarId) {
+      try { await client.sonars.delete(sonarId); console.log(`  [cleanup] Deleted sonar ${sonarId}`); } catch { /* gone */ }
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // 3b. createWithOperators typed helper
 // ---------------------------------------------------------------------------
 

@@ -35,6 +35,9 @@ from .models import (
     PodcastTopicMatch,
     PopularShow,
     PopularEpisode,
+    Sonar,
+    SonarMatch,
+    SonarPreview,
 )
 from .exceptions import (
     SurfAPIError,
@@ -88,6 +91,9 @@ __all__ = [
     "PodcastTopicMatch",
     "PopularShow",
     "PopularEpisode",
+    "Sonar",
+    "SonarMatch",
+    "SonarPreview",
     "episode_url_sha1",
 ]
 

@@ -38,8 +38,7 @@ import type {
   PodcastCatchUpResponse,
   PodcastTopicSeekResponse,
   PopularShowsResponse,
-  PopularEpisodesResponse,
-} from './types';
+  PopularEpisodesResponse, Sonar, SonarSpec, SonarChannel, SonarMatch, SonarMatchPage, SonarPreview } from './types';
 
 export * from './types';
 export { SurfOAuth, generatePKCE } from './oauth';
@@ -121,6 +120,7 @@ export class SurfClient {
   public readonly notifications: NotificationsAPI;
   public readonly preferences: PreferencesAPI;
   public readonly customFeeds: CustomFeedsAPI;
+  public readonly sonars: SonarsAPI;
   public readonly media: MediaAPI;
   public readonly longform: LongformAPI;
   public readonly diagnostics: DiagnosticsAPI;
@@ -144,6 +144,7 @@ export class SurfClient {
     this.notifications = new NotificationsAPI(this);
     this.preferences = new PreferencesAPI(this);
     this.customFeeds = new CustomFeedsAPI(this);
+    this.sonars = new SonarsAPI(this);
     this.media = new MediaAPI(this);
     this.longform = new LongformAPI(this);
     this.diagnostics = new DiagnosticsAPI(this);
@@ -972,6 +973,105 @@ class CustomFeedsAPI {
     return this.c._put(`/custom/${feedId}/operators/${opId}`, op);
   }
   removeOperator(feedId: string, opId: string) { return this.c._delete(`/custom/${feedId}/operators/${opId}`); }
+}
+
+// ==========================================================================
+// Sonars
+// ==========================================================================
+
+/**
+ * Create / update body for a Sonar. Every field is optional on update (PATCH
+ * semantics); `name` and `spec` are required on create. `daily_cap: null` on an
+ * update clears the cap, an omitted `daily_cap` leaves it alone.
+ */
+export interface SonarRequest {
+  name?: string;
+  spec?: SonarSpec;
+  /** Default true. */
+  enabled?: boolean;
+  /** Default `instant` (the only cadence delivered today). */
+  cadence?: string;
+  /** Default `[{ type: 'push' }]` (the only channel delivered today). */
+  channels?: SonarChannel[];
+  daily_cap?: number | null;
+}
+
+/**
+ * Sonars: standing watches on the open social web (`read:sonars` / `write:sonars`).
+ *
+ * A Sonar is a saved {@link SonarSpec} — WHAT to listen for (query, topics,
+ * hashtags), WHERE (surfaces) and content filters — matched against every new
+ * post as it is indexed. Matches land in the Sonar's ledger and, for the
+ * `instant` cadence with a `push` channel, arrive as a push notification.
+ * Preview a spec before saving to see its volume.
+ *
+ * @example
+ * ```ts
+ * const spec = { subject: { hashtags: ['#opensearch'] }, surfaces: ['bluesky', 'mastodon'] };
+ * const preview = await client.sonars.preview(spec, { days: 7 });
+ * const sonar = await client.sonars.create({ name: 'OpenSearch chatter', spec, daily_cap: 20 });
+ * for await (const m of client.sonars.iterMatches(sonar.id)) console.log(m.matched_at, m.post_id);
+ * ```
+ */
+class SonarsAPI {
+  constructor(private c: SurfClient) {}
+
+  /** Create a Sonar; live when the call returns. A 400 names the spec problem (empty subject, short term, unknown surface…). */
+  create(body: SonarRequest & { name: string; spec: SonarSpec }): Promise<Sonar> {
+    return this.c._post<Sonar>('/sonars', body);
+  }
+
+  /** The caller's Sonars, newest first. */
+  list(): Promise<Sonar[]> {
+    return this.c._get<Sonar[]>('/sonars');
+  }
+
+  /** One Sonar. 404 when absent or someone else's. */
+  get(id: string): Promise<Sonar> {
+    return this.c._get<Sonar>(`/sonars/${encodeURIComponent(id)}`);
+  }
+
+  /** PATCH: only the fields present change. A new `spec` re-registers the live query only when it compiles differently. */
+  update(id: string, body: SonarRequest): Promise<Sonar> {
+    return this.c._patch<Sonar>(`/sonars/${encodeURIComponent(id)}`, body);
+  }
+
+  /** Delete a Sonar and its match history (204). */
+  delete(id: string): Promise<void> {
+    return this.c._delete<void>(`/sonars/${encodeURIComponent(id)}`);
+  }
+
+  /** One page of the match ledger, newest first. `limit` defaults to 50 (max 200). */
+  matches(id: string, opts?: { before?: number; limit?: number }): Promise<SonarMatchPage> {
+    return this.c._get<SonarMatchPage>(`/sonars/${encodeURIComponent(id)}/matches`, { ...opts });
+  }
+
+  /** Walk the whole match ledger, newest first, following `next_before`. */
+  async *iterMatches(id: string, opts?: { limit?: number }): AsyncGenerator<SonarMatch> {
+    let before: number | undefined;
+    let count = 0;
+    const limit = opts?.limit;
+    for (;;) {
+      const page = await this.matches(id, { before, limit: limit ? Math.min(200, limit - count) : undefined });
+      for (const m of page.matches ?? []) {
+        yield m;
+        count += 1;
+        if (limit && count >= limit) return;
+      }
+      if (page.next_before === undefined || page.next_before === null) return;
+      before = page.next_before;
+    }
+  }
+
+  /**
+   * What a spec would have matched over the trailing window (1-30 days, default 30):
+   * total, per-day histogram, five newest samples. The same compiled query the
+   * matcher uses, so the number is a real forecast; cached server-side for 15
+   * minutes per compiled spec. Requires `write:sonars`.
+   */
+  preview(spec: SonarSpec, opts?: { days?: number }): Promise<SonarPreview> {
+    return this.c._request<SonarPreview>('POST', '/sonars/preview', { params: { days: opts?.days }, json: spec });
+  }
 }
 
 // ==========================================================================

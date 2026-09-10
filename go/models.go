@@ -578,3 +578,143 @@ type PopularEpisodesResponse struct {
 	Total int     `json:"total"`
 	Error *string `json:"error,omitempty"`
 }
+
+// =========================================================================
+// Sonars
+// =========================================================================
+
+// SonarTopic names a topic by its index slug ("climatechange") or display
+// name; the API resolves display names to slugs on save.
+type SonarTopic struct {
+	Name string `json:"name"`
+	// MinScore is reserved; the global topic threshold applies today.
+	MinScore *float64 `json:"min_score,omitempty"`
+}
+
+// SonarSubject is WHAT a Sonar listens for. The parts are alternatives: a post
+// matching any of them matches.
+type SonarSubject struct {
+	// Query uses the /search/posts grammar: quoted phrases, && / ||, #hashtags.
+	// Every text term must be at least 3 characters.
+	Query  string       `json:"query,omitempty"`
+	Topics []SonarTopic `json:"topics,omitempty"`
+	// Hashtags are bare tags, with or without the #. Always a list.
+	Hashtags []string `json:"hashtags,omitempty"`
+}
+
+// SonarContentFilters refine the matched post itself. Bridged and spam posts
+// are always excluded.
+type SonarContentFilters struct {
+	PostTypes      []string `json:"post_types,omitempty"`
+	Lang           []string `json:"lang,omitempty"`
+	HasLink        *bool    `json:"has_link,omitempty"`
+	Domains        []string `json:"domains,omitempty"`
+	ExcludeNSFW    *bool    `json:"exclude_nsfw,omitempty"`
+	ExcludeBots    *bool    `json:"exclude_bots,omitempty"`
+	ExcludeReplies *bool    `json:"exclude_replies,omitempty"`
+}
+
+// SonarPosterScope is WHO. Only "anyone" is accepted today.
+type SonarPosterScope struct {
+	Kind string `json:"kind"`
+}
+
+// SonarSpec is a Sonar's spec: subject x surfaces x content filters x poster
+// scope. Stored and returned as sent.
+type SonarSpec struct {
+	Subject SonarSubject `json:"subject"`
+	// Surfaces: bluesky | mastodon | rss | podcast | youtube | leaflet | place_stream; empty = all.
+	Surfaces       []string             `json:"surfaces,omitempty"`
+	ContentFilters *SonarContentFilters `json:"content_filters,omitempty"`
+	PosterScope    *SonarPosterScope    `json:"poster_scope,omitempty"`
+}
+
+// SonarChannel is one delivery channel. Only "push" is delivered today;
+// slack/webhook need Target when they land.
+type SonarChannel struct {
+	Type   string  `json:"type"`
+	Target *string `json:"target,omitempty"`
+}
+
+// SonarRequest is the create / update body for Sonars.Create and
+// Sonars.Update. Every field is optional on update (PATCH semantics); Name and
+// Spec are required on create. omitempty means a nil DailyCap is not sent; to
+// clear the cap send map[string]interface{}{"daily_cap": nil} instead.
+type SonarRequest struct {
+	Name string     `json:"name,omitempty"`
+	Spec *SonarSpec `json:"spec,omitempty"`
+	// Enabled defaults to true.
+	Enabled *bool `json:"enabled,omitempty"`
+	// Cadence defaults to "instant" (the only cadence delivered today).
+	Cadence string `json:"cadence,omitempty"`
+	// Channels default to [{"type":"push"}] (the only channel delivered today).
+	Channels []SonarChannel `json:"channels,omitempty"`
+	DailyCap *int           `json:"daily_cap,omitempty"`
+}
+
+// Sonar is a Sonar as returned by the API: the saved spec plus delivery settings.
+type Sonar struct {
+	// ID is a ULID.
+	ID      string    `json:"id"`
+	OwnerID string    `json:"owner_id"`
+	Name    string    `json:"name"`
+	Enabled bool      `json:"enabled"`
+	Spec    SonarSpec `json:"spec"`
+	// Cadence: only "instant" is accepted today.
+	Cadence  string         `json:"cadence"`
+	Channels []SonarChannel `json:"channels"`
+	DailyCap *int           `json:"daily_cap,omitempty"`
+	Tier     *string        `json:"tier,omitempty"`
+	// Timestamps are ISO-8601 strings.
+	LastDeliveredAt *string `json:"last_delivered_at,omitempty"`
+	Created         string  `json:"created"`
+	Updated         string  `json:"updated"`
+}
+
+// SonarMatch is one ledger row from Sonars.Matches.
+type SonarMatch struct {
+	// ID is the before cursor value.
+	ID      int64  `json:"id"`
+	SonarID string `json:"sonar_id"`
+	PostID  string `json:"post_id"`
+	// StoryKey is the canonical URL/story the post is about, when known.
+	StoryKey  *string `json:"story_key,omitempty"`
+	MatchedAt string  `json:"matched_at"`
+	// Why says which clause matched, plus service / surfaces / post_version.
+	Why         json.RawMessage `json:"why,omitempty"`
+	Delivered   bool            `json:"delivered"`
+	DeliveredAt *string         `json:"delivered_at,omitempty"`
+}
+
+// SonarMatchPage is one page of matches; pass NextBefore back as before for
+// the next page. Nil when there is no next page.
+type SonarMatchPage struct {
+	Matches    []SonarMatch `json:"matches"`
+	NextBefore *int64       `json:"next_before,omitempty"`
+}
+
+// SonarPreviewDayCount is one bucket of the preview histogram.
+type SonarPreviewDayCount struct {
+	// Day is the ISO bucket start.
+	Day   string `json:"day"`
+	Count int64  `json:"count"`
+}
+
+// SonarPreviewSample is one of the newest matching posts in a preview.
+type SonarPreviewSample struct {
+	ID        string  `json:"id"`
+	Service   *string `json:"service,omitempty"`
+	CreatedAt *string `json:"created_at,omitempty"`
+	Snippet   *string `json:"snippet,omitempty"`
+	URL       *string `json:"url,omitempty"`
+}
+
+// SonarPreview is the response of Sonars.Preview: what a spec would have
+// matched over the trailing window.
+type SonarPreview struct {
+	WindowDays int                    `json:"window_days"`
+	Total      int64                  `json:"total"`
+	PerDay     []SonarPreviewDayCount `json:"per_day"`
+	// Samples are up to five newest matching posts.
+	Samples []SonarPreviewSample `json:"samples"`
+}

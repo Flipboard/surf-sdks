@@ -42,6 +42,7 @@ trending = client.feeds.get_posts("surf/trending/dynamic", limit=10)
 - **AI Search**: Natural language queries via NLWeb
 - **Audio**: Radio stations, daily briefings, transcripts, quizzes
 - **Custom Feeds**: Create, update, delete, clone, publish custom feeds
+- **Sonars**: Standing watches on the open social web — save a spec, get pinged on every new match
 - **Account**: User info, activity, notifications, preferences
 - **Media**: Upload images
 - **Rate Limiting**: Automatic rate limit tracking via `client.rate_limit`
@@ -91,6 +92,38 @@ theme = FeedTheme(
 )
 feed = client.custom_feeds.create("Branded Feed", theme=theme)
 ```
+
+## Sonars
+
+A Sonar is a saved spec matched against every new post as it is indexed, across
+Bluesky, Mastodon, RSS, podcasts, YouTube and Leaflet. Preview first, then create.
+
+```python
+spec = {
+    "subject": {"query": 'nvidia && "earnings call"', "hashtags": ["#nvda"]},  # any of these matches
+    "surfaces": ["bluesky", "mastodon"],
+    "content_filters": {"lang": ["en"], "exclude_replies": True},
+}
+
+# How noisy would this be? (last 7 days: total, per-day histogram, five samples)
+preview = client.sonars.preview(spec, days=7)
+print(preview["total"], preview["per_day"][-1])
+
+# Save it — live when the call returns; instant push is the delivery today
+sonar = client.sonars.create("NVIDIA earnings", spec, daily_cap=20)
+
+# Pause it, clear the cap (explicit None), rename it — PATCH semantics
+client.sonars.update(sonar["id"], enabled=False)
+client.sonars.update(sonar["id"], daily_cap=None, name="NVDA")
+
+# Match ledger, newest first, paged on `before`
+for match in client.sonars.iter_matches(sonar["id"], limit=100):
+    print(match["matched_at"], match["post_id"], match["why"])
+
+client.sonars.delete(sonar["id"])
+```
+
+Scopes: `read:sonars` (list/get/matches) and `write:sonars` (create/update/delete/preview).
 
 ## Longform (standard.site / Leaflet)
 

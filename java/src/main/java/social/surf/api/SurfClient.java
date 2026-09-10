@@ -91,6 +91,7 @@ public class SurfClient {
     public final NotificationsApi notifications;
     public final PreferencesApi preferences;
     public final CustomFeedsApi customFeeds;
+    public final SonarsApi sonars;
     public final MediaApi media;
     public final LongformApi longform;
     public final DiagnosticsApi diagnostics;
@@ -148,6 +149,7 @@ public class SurfClient {
         this.notifications = new NotificationsApi(this);
         this.preferences = new PreferencesApi(this);
         this.customFeeds = new CustomFeedsApi(this);
+        this.sonars = new SonarsApi(this);
         this.media = new MediaApi(this);
         this.longform = new LongformApi(this);
         this.diagnostics = new DiagnosticsApi(this);
@@ -251,6 +253,10 @@ public class SurfClient {
 
     <T> T putAs(String path, Object json, Class<T> type) {
         return requestAs("PUT", path, null, json, type);
+    }
+
+    <T> T patchAs(String path, Object json, Class<T> type) {
+        return requestAs("PATCH", path, null, json, type);
     }
 
     <T> T deleteAs(String path, Class<T> type) {
