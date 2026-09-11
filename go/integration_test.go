@@ -451,6 +451,9 @@ func TestIntegration(t *testing.T) {
 		})
 
 		t.Run("ValidationIs400", func(t *testing.T) {
+			if sonarID == "" {
+				t.Skip("No sonar created (token lacks write:sonars)")
+			}
 			_, err := client.Sonars.Preview(SonarSpec{Subject: SonarSubject{Query: "ab"}}, 7) // every text term >= 3 chars
 			var apiErr *APIError
 			if !errors.As(err, &apiErr) || apiErr.StatusCode != 400 {

@@ -278,6 +278,17 @@ class TestSonars:
     sonar_id = None
     SPEC = {"subject": {"hashtags": ["#surfsdktest"]}, "surfaces": ["bluesky", "mastodon"]}
 
+    @pytest.fixture(scope="class", autouse=True)
+    def _cleanup(self, request, client):
+        """Best-effort teardown: a failure between create and delete must not leak a live Sonar."""
+        yield
+        if TestSonars.sonar_id:
+            try:
+                client.sonars.delete(TestSonars.sonar_id)
+            except SurfAPIError:
+                pass
+            TestSonars.sonar_id = None
+
     def test_01_preview(self, client):
         preview = skip_on_scope(lambda: retry_on_rate_limit(lambda: client.sonars.preview(self.SPEC, days=7)))
         assert preview["window_days"] == 7
@@ -319,6 +330,8 @@ class TestSonars:
         assert list(client.sonars.iter_matches(self.sonar_id, limit=5)) == page["matches"][:5]
 
     def test_06_validation_is_a_400(self, client):
+        if not self.sonar_id:
+            pytest.skip("No sonar created (token lacks write:sonars)")
         with pytest.raises(SurfAPIError) as e:
             retry_on_rate_limit(lambda: client.sonars.preview({"subject": {"query": "ab"}}))
         assert e.value.status_code == 400  # every text term must be at least 3 characters

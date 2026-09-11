@@ -697,7 +697,7 @@ export interface SonarContentFilters {
 
 /** WHO. Only `anyone` is accepted today. */
 export interface SonarPosterScope {
-  kind: 'anyone' | string;
+  kind: 'anyone' | (string & {});
 }
 
 /** A Sonar spec: subject × surfaces × content filters × poster scope. Stored and returned as sent. */
@@ -711,7 +711,7 @@ export interface SonarSpec {
 
 /** One delivery channel. Only `push` is delivered today; slack/webhook need a `target` URL when they land. */
 export interface SonarChannel {
-  type: 'push' | 'in_app_feed' | 'email' | 'slack' | 'webhook' | 'mcp' | string;
+  type: 'push' | 'in_app_feed' | 'email' | 'slack' | 'webhook' | 'mcp' | (string & {});
   target?: string | null;
 }
 
