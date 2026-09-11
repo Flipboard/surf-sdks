@@ -336,6 +336,147 @@ func TestIntegration(t *testing.T) {
 	// =====================================================================
 	// 3b. CreateWithOperators typed helper
 	// =====================================================================
+	t.Run("Sonars", func(t *testing.T) {
+		spec := SonarSpec{Subject: SonarSubject{Hashtags: []string{"#surfsdktest"}}, Surfaces: []string{"bluesky", "mastodon"}}
+		var sonarID string
+
+		t.Run("Preview", func(t *testing.T) {
+			raw, err := client.Sonars.Preview(spec, 7)
+			skipOnScope(t, err, "Token lacks write:sonars scope")
+			if err != nil {
+				t.Fatalf("Sonars.Preview failed: %v", err)
+			}
+			var p SonarPreview
+			if err := json.Unmarshal(raw, &p); err != nil {
+				t.Fatalf("decode preview: %v", err)
+			}
+			if p.WindowDays != 7 {
+				t.Errorf("window_days = %d, want 7", p.WindowDays)
+			}
+		})
+
+		t.Run("Create", func(t *testing.T) {
+			cap := 5
+			raw, err := client.Sonars.Create(SonarRequest{Name: "Go SDK Test Sonar", Spec: &spec, DailyCap: &cap})
+			skipOnScope(t, err, "Token lacks write:sonars scope")
+			if err != nil {
+				t.Fatalf("Sonars.Create failed: %v", err)
+			}
+			var s Sonar
+			if err := json.Unmarshal(raw, &s); err != nil {
+				t.Fatalf("decode sonar: %v", err)
+			}
+			if s.ID == "" || !s.Enabled || s.Cadence != "instant" || len(s.Channels) != 1 || s.Channels[0].Type != "push" || s.DailyCap == nil || *s.DailyCap != 5 {
+				t.Fatalf("unexpected sonar: %+v", s)
+			}
+			sonarID = s.ID
+			t.Logf("Created sonar: %s", sonarID)
+		})
+
+		t.Cleanup(func() {
+			if sonarID != "" {
+				t.Logf("Cleanup: deleting sonar %s", sonarID)
+				_ = client.Sonars.Delete(sonarID)
+			}
+		})
+
+		t.Run("GetAndList", func(t *testing.T) {
+			if sonarID == "" {
+				t.Skip("No sonar created")
+			}
+			raw, err := client.Sonars.Get(sonarID)
+			if err != nil {
+				t.Fatalf("Sonars.Get failed: %v", err)
+			}
+			var s Sonar
+			if err := json.Unmarshal(raw, &s); err != nil || s.ID != sonarID {
+				t.Fatalf("Get returned %s (%v)", raw, err)
+			}
+			raw, err = client.Sonars.List()
+			if err != nil {
+				t.Fatalf("Sonars.List failed: %v", err)
+			}
+			var all []Sonar
+			if err := json.Unmarshal(raw, &all); err != nil {
+				t.Fatalf("decode list: %v", err)
+			}
+			found := false
+			for _, s := range all {
+				found = found || s.ID == sonarID
+			}
+			if !found {
+				t.Errorf("created sonar not in list of %d", len(all))
+			}
+		})
+
+		t.Run("UpdateAndClearCap", func(t *testing.T) {
+			if sonarID == "" {
+				t.Skip("No sonar created")
+			}
+			enabled := false
+			raw, err := client.Sonars.Update(sonarID, SonarRequest{Name: "Go SDK Test renamed", Enabled: &enabled})
+			if err != nil {
+				t.Fatalf("Sonars.Update failed: %v", err)
+			}
+			var s Sonar
+			_ = json.Unmarshal(raw, &s)
+			if s.Name != "Go SDK Test renamed" || s.Enabled || s.DailyCap == nil || *s.DailyCap != 5 {
+				t.Errorf("after rename: %+v (an omitted daily_cap must be left alone)", s)
+			}
+			raw, err = client.Sonars.Update(sonarID, map[string]interface{}{"daily_cap": nil})
+			if err != nil {
+				t.Fatalf("Sonars.Update(clear cap) failed: %v", err)
+			}
+			_ = json.Unmarshal(raw, &s)
+			if s.DailyCap != nil {
+				t.Errorf("explicit null should clear the cap, got %d", *s.DailyCap)
+			}
+		})
+
+		t.Run("Matches", func(t *testing.T) {
+			if sonarID == "" {
+				t.Skip("No sonar created")
+			}
+			raw, err := client.Sonars.Matches(sonarID, 0, 5)
+			if err != nil {
+				t.Fatalf("Sonars.Matches failed: %v", err)
+			}
+			var page SonarMatchPage
+			if err := json.Unmarshal(raw, &page); err != nil {
+				t.Fatalf("decode page: %v", err)
+			}
+			if page.Matches == nil {
+				t.Errorf("matches should be a list, got %s", raw)
+			}
+		})
+
+		t.Run("ValidationIs400", func(t *testing.T) {
+			if sonarID == "" {
+				t.Skip("No sonar created (token lacks write:sonars)")
+			}
+			_, err := client.Sonars.Preview(SonarSpec{Subject: SonarSubject{Query: "ab"}}, 7) // every text term >= 3 chars
+			var apiErr *APIError
+			if !errors.As(err, &apiErr) || apiErr.StatusCode != 400 {
+				t.Errorf("want 400, got %v", err)
+			}
+		})
+
+		t.Run("Delete", func(t *testing.T) {
+			if sonarID == "" {
+				t.Skip("No sonar created")
+			}
+			if err := client.Sonars.Delete(sonarID); err != nil {
+				t.Fatalf("Sonars.Delete failed: %v", err)
+			}
+			_, err := client.Sonars.Get(sonarID)
+			var apiErr *APIError
+			if !errors.As(err, &apiErr) || apiErr.StatusCode != 404 {
+				t.Errorf("want 404 after delete, got %v", err)
+			}
+			sonarID = ""
+		})
+	})
+
 	t.Run("CreateWithOperators", func(t *testing.T) {
 		var feedID string
 

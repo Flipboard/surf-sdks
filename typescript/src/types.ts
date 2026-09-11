@@ -662,3 +662,118 @@ export interface PopularEpisodesResponse {
   total: number;
   error?: string | null;
 }
+
+
+// ==========================================================================
+// Sonars
+// ==========================================================================
+
+/** A Sonar topic: the index slug (`climatechange`) or a display name, resolved to a slug on save. */
+export interface SonarTopic {
+  name: string;
+  /** Reserved; the global topic threshold applies today. */
+  min_score?: number | null;
+}
+
+/** WHAT a Sonar listens for. The parts are alternatives: a post matching any of them matches. */
+export interface SonarSubject {
+  /** The /search/posts grammar: quoted phrases, `&&` / `||`, `#hashtags`. Every text term must be at least 3 characters. */
+  query?: string | null;
+  topics?: SonarTopic[] | null;
+  /** Bare hashtags, with or without the `#`. Always a list. */
+  hashtags?: string[] | null;
+}
+
+/** Refinements on the matched post itself. Bridged and spam posts are always excluded. */
+export interface SonarContentFilters {
+  post_types?: string[] | null;
+  lang?: string[] | null;
+  has_link?: boolean | null;
+  domains?: string[] | null;
+  exclude_nsfw?: boolean | null;
+  exclude_bots?: boolean | null;
+  exclude_replies?: boolean | null;
+}
+
+/** WHO. Only `anyone` is accepted today. */
+export interface SonarPosterScope {
+  kind: 'anyone' | (string & {});
+}
+
+/** A Sonar spec: subject × surfaces × content filters × poster scope. Stored and returned as sent. */
+export interface SonarSpec {
+  subject: SonarSubject;
+  /** bluesky | mastodon | rss | podcast | youtube | leaflet | place_stream; omit for all. */
+  surfaces?: string[] | null;
+  content_filters?: SonarContentFilters | null;
+  poster_scope?: SonarPosterScope | null;
+}
+
+/** One delivery channel. Only `push` is delivered today; slack/webhook need a `target` URL when they land. */
+export interface SonarChannel {
+  type: 'push' | 'in_app_feed' | 'email' | 'slack' | 'webhook' | 'mcp' | (string & {});
+  target?: string | null;
+}
+
+/** A Sonar as returned by the API. */
+export interface Sonar {
+  /** ULID. */
+  id: string;
+  owner_id: string;
+  name: string;
+  enabled: boolean;
+  spec: SonarSpec;
+  /** Only `instant` is accepted today. */
+  cadence: string;
+  channels: SonarChannel[];
+  daily_cap?: number | null;
+  tier?: string | null;
+  /** ISO-8601. */
+  last_delivered_at?: string | null;
+  created: string;
+  updated: string;
+}
+
+/** One ledger row from `sonars.matches`. */
+export interface SonarMatch {
+  /** The `before` cursor value. */
+  id: number;
+  sonar_id: string;
+  post_id: string;
+  /** Canonical URL/story the post is about, when known. */
+  story_key?: string | null;
+  matched_at: string;
+  /** Which clause matched, plus service / surfaces / post_version. */
+  why?: Record<string, unknown> | null;
+  delivered: boolean;
+  delivered_at?: string | null;
+}
+
+/** A page of matches; pass `next_before` back as `before` for the next page. `null` when there is no next page. */
+export interface SonarMatchPage {
+  matches: SonarMatch[];
+  next_before?: number | null;
+}
+
+export interface SonarPreviewDayCount {
+  /** ISO bucket start for the day. */
+  day: string;
+  count: number;
+}
+
+export interface SonarPreviewSample {
+  id: string;
+  service?: string | null;
+  created_at?: string | null;
+  snippet?: string | null;
+  url?: string | null;
+}
+
+/** `sonars.preview`: what a spec would have matched over the trailing window. */
+export interface SonarPreview {
+  window_days: number;
+  total: number;
+  per_day: SonarPreviewDayCount[];
+  /** Up to five newest matching posts. */
+  samples: SonarPreviewSample[];
+}

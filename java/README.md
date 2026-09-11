@@ -64,6 +64,7 @@ System.out.println(client.ai.feedSummary("surf/topic/technology").feedSummary())
 - **AI**: Natural language search, feed summaries, AI feed builder (100/day limit)
 - **Audio**: Radio stations, daily briefings, transcripts, quizzes, text-to-speech
 - **Custom Feeds**: Create, update, delete, clone, publish custom feeds with typed operators
+- **Sonars**: Standing watches on the open social web — save a typed spec, page the match ledger, preview volume first
 - **Account**: User info, lookup, profile links, connected apps
 - **Notifications**: Read notifications, manage badge counts
 - **Content**: URL resolution, article extraction, language detection, enrichment
@@ -93,6 +94,10 @@ mirroring the backend DTOs. Every model is annotated `@JsonIgnoreProperties(igno
 | `notifications.list(...)` | `List<Notification>` |
 | `customFeeds.list()` | `List<CustomFeed>` |
 | `customFeeds.get/create/update/clone/publish/...Operator(...)` | `CustomFeed` |
+| `sonars.list()` | `List<Sonar>` |
+| `sonars.get/create/update/rename/setEnabled/updateSpec/clearDailyCap(...)` | `Sonar` |
+| `sonars.matches(...)` | `SonarMatchPage` (`iterateMatches(...)` yields `SonarMatch`) |
+| `sonars.preview(...)` | `SonarPreview` |
 | `media.upload(...)` | `MediaUploadResponse` (feed cover URL) |
 | `media.uploadAttachment(...)`, `media.getAttachment(...)` | `Map<String, Object>` (post attachment; `ready` flag) |
 | `longform.getDocument(...)` | `Document` |
@@ -172,6 +177,45 @@ FeedTheme theme = FeedTheme.builder()
     .build();
 client.customFeeds.createWithTheme("Branded Feed", null, theme);
 ```
+
+## Sonars
+
+A Sonar is a saved spec matched against every new post as it is indexed, across
+Bluesky, Mastodon, RSS, podcasts, YouTube and Leaflet. Preview first, then create.
+
+```java
+import social.surf.api.model.Sonar;
+import social.surf.api.model.SonarMatch;
+import social.surf.api.model.SonarPreview;
+import social.surf.api.model.SonarSpec;
+
+SonarSpec spec = new SonarSpec(
+    new SonarSpec.Subject("nvidia && \"earnings call\"", null, List.of("#nvda")), // any part matches
+    List.of("bluesky", "mastodon"),
+    new SonarSpec.ContentFilters(null, List.of("en"), null, null, null, null, true),
+    null);
+
+// How noisy would this be? (last 7 days: total, per-day histogram, five samples)
+SonarPreview preview = client.sonars.preview(spec, 7);
+System.out.println(preview.total() + " matches in the last week");
+
+// Save it — live when the call returns; instant push is the delivery today
+Sonar sonar = client.sonars.create("NVIDIA earnings", spec, null, null, null, 20);
+
+// PATCH semantics: each call changes only what it names
+client.sonars.setEnabled(sonar.id(), false);
+client.sonars.clearDailyCap(sonar.id());
+client.sonars.rename(sonar.id(), "NVDA");
+
+// Match ledger, newest first, paged on `before`
+for (SonarMatch m : client.sonars.iterateMatches(sonar.id(), 100)) {
+    System.out.println(m.matchedAt() + " " + m.postId() + " " + m.why());
+}
+
+client.sonars.delete(sonar.id());
+```
+
+Scopes: `read:sonars` (list/get/matches) and `write:sonars` (create/update/delete/preview).
 
 ## Audio
 

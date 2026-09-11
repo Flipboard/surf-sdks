@@ -101,6 +101,7 @@ class SurfClient:
         self.notifications = _NotificationsAPI(self)
         self.preferences = _PreferencesAPI(self)
         self.custom_feeds = _CustomFeedsAPI(self)
+        self.sonars = _SonarsAPI(self)
         self.media = _MediaAPI(self)
         self.longform = _LongformAPI(self)
         self.diagnostics = _DiagnosticsAPI(self)
@@ -1448,6 +1449,135 @@ class _CustomFeedsAPI:
     def remove_operator(self, feed_id: str, operator_id: str) -> dict:
         """Remove an operator from a custom feed."""
         return self._c._delete(f"/custom/{feed_id}/operators/{operator_id}")
+
+
+# ==========================================================================
+# Sonars
+# ==========================================================================
+
+class _SonarsAPI:
+    """Sonars: standing watches on the open social web (read:sonars / write:sonars scopes).
+
+    A Sonar is a saved spec — WHAT to listen for (a search query, topics,
+    hashtags), WHERE (surfaces: bluesky, mastodon, rss, podcast, youtube,
+    leaflet) and content filters — that is matched against every new post as
+    it is indexed. Matches land in the Sonar's ledger and, for the ``instant``
+    cadence with a ``push`` channel, arrive as a push notification.
+
+    Spec shape (a plain dict, stored and returned as-is)::
+
+        {
+          "subject": {                       # at least one of the three
+            "query": "nvidia && \"earnings call\"",   # /search/posts grammar; every text term >= 3 chars
+            "topics": [{"name": "climatechange"}],      # index slugs or display names
+            "hashtags": ["#foobar"]                    # always a list
+          },
+          "surfaces": ["bluesky", "mastodon"],  # omit for all
+          "content_filters": {"post_types": [...], "lang": ["en"], "has_link": true,
+                              "domains": [...], "exclude_nsfw": true,
+                              "exclude_bots": true, "exclude_replies": true},
+          "poster_scope": {"kind": "anyone"}
+        }
+
+    Delivery settings sit beside the spec on the Sonar: ``cadence`` (only
+    ``instant`` is accepted today), ``channels`` (``[{"type": "push"}]``) and
+    ``daily_cap``. Preview a spec before saving to see its volume.
+
+    Example:
+        preview = client.sonars.preview({"subject": {"hashtags": ["#opensearch"]}}, days=7)
+        print(preview["total"], "matches in the last week")
+
+        sonar = client.sonars.create("OpenSearch chatter",
+                                     {"subject": {"hashtags": ["#opensearch"]},
+                                      "surfaces": ["bluesky", "mastodon"]})
+        for m in client.sonars.iter_matches(sonar["id"]):
+            print(m["matched_at"], m["post_id"])
+    """
+
+    def __init__(self, client: SurfClient):
+        self._c = client
+
+    def create(self, name: str, spec: dict, enabled: bool = None, cadence: str = None,
+               channels: Optional[List[dict]] = None, daily_cap: int = None) -> dict:
+        """Create a Sonar. Live when the call returns.
+
+        Args:
+            name: 1-255 characters.
+            spec: The spec dict (see class docstring). Validated server-side; a 400
+                names the problem (empty subject, short term, unknown surface...).
+            enabled: Defaults to True.
+            cadence: Defaults to ``instant`` (the only cadence delivered today).
+            channels: Defaults to ``[{"type": "push"}]`` (the only channel delivered today).
+            daily_cap: Max pings per day; omit for no cap.
+        """
+        body: dict = {"name": name, "spec": spec}
+        if enabled is not None:
+            body["enabled"] = enabled
+        if cadence:
+            body["cadence"] = cadence
+        if channels:
+            body["channels"] = channels
+        if daily_cap is not None:
+            body["daily_cap"] = daily_cap
+        return self._c._post("/sonars", json=body)
+
+    def list(self) -> list:
+        """The caller's Sonars, newest first."""
+        return self._c._get("/sonars")
+
+    def get(self, sonar_id: str) -> dict:
+        """One Sonar. 404 when absent or someone else's."""
+        return self._c._get(f"/sonars/{quote(sonar_id, safe='')}")
+
+    def update(self, sonar_id: str, **fields) -> dict:
+        """PATCH a Sonar: only the fields you pass change.
+
+        Accepts ``name``, ``spec``, ``enabled``, ``cadence``, ``channels`` and
+        ``daily_cap``. Pass ``daily_cap=None`` explicitly to clear the cap
+        (an omitted field is left alone). A new ``spec`` re-registers the live
+        query only when it actually compiles differently.
+        """
+        return self._c._patch(f"/sonars/{quote(sonar_id, safe='')}", json=fields)
+
+    def delete(self, sonar_id: str) -> dict:
+        """Delete a Sonar and its match history. Returns {} (204)."""
+        return self._c._delete(f"/sonars/{quote(sonar_id, safe='')}")
+
+    def matches(self, sonar_id: str, before: int = None, limit: int = None) -> dict:
+        """One page of the Sonar's match ledger, newest first.
+
+        Returns ``{"matches": [...], "next_before": <id or None>}``; pass
+        ``next_before`` back as ``before`` for the next page. ``limit`` defaults
+        to 50 (max 200). Each match carries ``post_id``, ``story_key``,
+        ``matched_at``, ``why`` (which clause matched), ``delivered``.
+        """
+        return self._c._get(f"/sonars/{quote(sonar_id, safe='')}/matches", {"before": before, "limit": limit})
+
+    def iter_matches(self, sonar_id: str, limit: int = None) -> Iterator[dict]:
+        """Walk the whole match ledger, newest first, following ``next_before``."""
+        before = None
+        count = 0
+        while True:
+            page = self.matches(sonar_id, before=before, limit=min(200, limit - count) if limit else None)
+            for m in page.get("matches") or []:
+                yield m
+                count += 1
+                if limit and count >= limit:
+                    return
+            before = page.get("next_before")
+            if before is None:
+                return
+
+    def preview(self, spec: dict, days: int = None) -> dict:
+        """What a spec would have matched over the trailing window (1-30 days, default 30).
+
+        A search over the same index with the same compiled query the matcher
+        will use, so the number is a real forecast. Returns ``window_days``,
+        ``total``, ``per_day`` (``[{"day", "count"}]``) and up to five newest
+        ``samples``. Cached server-side for 15 minutes per compiled spec.
+        Requires ``write:sonars``.
+        """
+        return self._c._post("/sonars/preview", json=spec, params=_clean({"days": days}))
 
 
 # ==========================================================================

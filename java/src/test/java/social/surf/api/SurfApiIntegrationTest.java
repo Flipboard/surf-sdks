@@ -16,12 +16,20 @@ import social.surf.api.model.FeedSummary;
 import social.surf.api.model.FeedTheme;
 import social.surf.api.model.GenerateImageJob;
 import social.surf.api.model.NewFeedOperator;
+import social.surf.api.model.Sonar;
+import social.surf.api.model.SonarChannel;
+import social.surf.api.model.SonarMatch;
+import social.surf.api.model.SonarMatchPage;
+import social.surf.api.model.SonarPreview;
+import social.surf.api.model.SonarSpec;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.fail;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -44,6 +52,7 @@ class SurfApiIntegrationTest {
     // State shared across ordered tests
     private static String customFeedId;
     private static String themedFeedId;
+    private static String sonarId;
     private static String mastodonPostId;
     private static String blueskyPostId;
 
@@ -86,6 +95,12 @@ class SurfApiIntegrationTest {
         if (themedFeedId != null) {
             try {
                 client.customFeeds.delete(themedFeedId);
+            } catch (Exception ignored) {
+            }
+        }
+        if (sonarId != null) {
+            try {
+                client.sonars.delete(sonarId);
             } catch (Exception ignored) {
             }
         }
@@ -301,6 +316,104 @@ class SurfApiIntegrationTest {
     // ======================================================================
     // 3b. Custom Feed Themes
     // ======================================================================
+
+    // ======================================================================
+    // 3a. Sonars
+    // ======================================================================
+
+    private static final SonarSpec SONAR_SPEC = SonarSpec.hashtags(List.of("#surfsdktest"), List.of("bluesky", "mastodon"));
+
+    @Test
+    @Order(305)
+    void sonarPreview() {
+        try {
+            SonarPreview preview = client.sonars.preview(SONAR_SPEC, 7);
+            assertEquals(7, preview.windowDays());
+            assertNotNull(preview.perDay());
+            assertNotNull(preview.samples());
+        } catch (SurfAPIError e) {
+            skipOnScopeOrAuth(e);
+        }
+    }
+
+    @Test
+    @Order(306)
+    void sonarCreate() {
+        try {
+            Sonar sonar = client.sonars.create("Java SDK Test Sonar", SONAR_SPEC, null, null, null, 5);
+            assertNotNull(sonar.id(), "Created sonar should have an id");
+            assertEquals(Boolean.TRUE, sonar.enabled());
+            assertEquals("instant", sonar.cadence());
+            assertEquals(List.of(SonarChannel.PUSH), sonar.channels());
+            assertEquals(5, sonar.dailyCap());
+            sonarId = sonar.id();
+        } catch (SurfAPIError e) {
+            skipOnScopeOrAuth(e);
+        }
+    }
+
+    @Test
+    @Order(307)
+    void sonarGetListUpdateAndClearCap() {
+        Assumptions.assumeTrue(sonarId != null, "No sonar created");
+        try {
+            assertEquals(sonarId, client.sonars.get(sonarId).id());
+            assertTrue(client.sonars.list().stream().anyMatch(s -> sonarId.equals(s.id())), "created sonar is listed");
+
+            Sonar renamed = client.sonars.rename(sonarId, "Java SDK Test renamed");
+            assertEquals("Java SDK Test renamed", renamed.name());
+            assertEquals(5, renamed.dailyCap(), "an omitted field is left alone");
+            Sonar paused = client.sonars.setEnabled(sonarId, false);
+            assertEquals(Boolean.FALSE, paused.enabled());
+            Sonar cleared = client.sonars.clearDailyCap(sonarId);
+            assertNull(cleared.dailyCap(), "an explicit null clears the cap");
+        } catch (SurfAPIError e) {
+            skipOnScopeOrAuth(e);
+        }
+    }
+
+    @Test
+    @Order(308)
+    void sonarMatchesAndValidation() {
+        Assumptions.assumeTrue(sonarId != null, "No sonar created");
+        try {
+            SonarMatchPage page = client.sonars.matches(sonarId, null, 5);
+            assertNotNull(page.matches(), "matches is a list");
+            int walked = 0;
+            for (SonarMatch ignored : client.sonars.iterateMatches(sonarId, 5)) {
+                walked++;
+            }
+            assertEquals(Math.min(5, page.matches().size()), walked);
+
+            try {
+                client.sonars.preview(SonarSpec.query("ab", null), 7); // every text term >= 3 chars
+                fail("expected a 400");
+            } catch (SurfAPIError e) {
+                assertEquals(400, e.getStatusCode());
+            }
+        } catch (SurfAPIError e) {
+            skipOnScopeOrAuth(e);
+        }
+    }
+
+    @Test
+    @Order(309)
+    void sonarDelete() {
+        Assumptions.assumeTrue(sonarId != null, "No sonar created");
+        try {
+            client.sonars.delete(sonarId);
+            try {
+                client.sonars.get(sonarId);
+                fail("expected a 404 after delete");
+            } catch (SurfNotFoundError expected) {
+                // gone
+            }
+            sonarId = null; // prevent AfterAll cleanup
+        } catch (SurfAPIError e) {
+            sonarId = null;
+            skipOnScopeOrAuth(e);
+        }
+    }
 
     @Test
     @Order(310)

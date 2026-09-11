@@ -873,3 +873,106 @@ class PopularEpisode:
         if isinstance(data, list):
             return [e for d in data if (e := cls.from_dict(d)) is not None]
         return []
+
+
+# ---------------------------------------------------------------------------
+# Sonars
+# ---------------------------------------------------------------------------
+
+@dataclass
+class Sonar:
+    """A Sonar as returned by ``client.sonars.*``: the saved spec plus delivery settings."""
+    id: str = ""  # ULID
+    owner_id: str = ""
+    name: str = ""
+    enabled: bool = True
+    spec: dict = field(default_factory=dict)  # subject / surfaces / content_filters / poster_scope
+    cadence: str = "instant"
+    channels: List[dict] = field(default_factory=list)  # [{"type": "push"}]
+    daily_cap: Optional[int] = None
+    tier: Optional[str] = None
+    last_delivered_at: Optional[str] = None  # ISO-8601
+    created: Optional[str] = None  # ISO-8601
+    updated: Optional[str] = None  # ISO-8601
+
+    @classmethod
+    def from_dict(cls, d: Optional[dict]) -> Optional[Sonar]:
+        if not d:
+            return None
+        return cls(
+            id=d.get("id", ""),
+            owner_id=d.get("owner_id", ""),
+            name=d.get("name", ""),
+            enabled=d.get("enabled", True),
+            spec=d.get("spec") or {},
+            cadence=d.get("cadence", "instant"),
+            channels=d.get("channels") or [],
+            daily_cap=d.get("daily_cap"),
+            tier=d.get("tier"),
+            last_delivered_at=d.get("last_delivered_at"),
+            created=d.get("created"),
+            updated=d.get("updated"),
+        )
+
+    @classmethod
+    def from_list(cls, data) -> List[Sonar]:
+        if isinstance(data, list):
+            return [s for d in data if (s := cls.from_dict(d)) is not None]
+        return []
+
+
+@dataclass
+class SonarMatch:
+    """One ledger row from ``client.sonars.matches``."""
+    id: int = 0  # the ``before`` cursor value
+    sonar_id: str = ""
+    post_id: str = ""
+    story_key: Optional[str] = None  # canonical URL/story the post is about, when known
+    matched_at: Optional[str] = None  # ISO-8601
+    why: Optional[dict] = None  # which clause matched, service, surfaces, post_version
+    delivered: bool = False
+    delivered_at: Optional[str] = None
+
+    @classmethod
+    def from_dict(cls, d: Optional[dict]) -> Optional[SonarMatch]:
+        if not d:
+            return None
+        return cls(
+            id=d.get("id", 0),
+            sonar_id=d.get("sonar_id", ""),
+            post_id=d.get("post_id", ""),
+            story_key=d.get("story_key"),
+            matched_at=d.get("matched_at"),
+            why=d.get("why"),
+            delivered=bool(d.get("delivered", False)),
+            delivered_at=d.get("delivered_at"),
+        )
+
+    @classmethod
+    def from_list(cls, data) -> List[SonarMatch]:
+        """Parse matches from an API response (list or a page dict with 'matches')."""
+        if isinstance(data, dict):
+            data = data.get("matches", [])
+        if isinstance(data, list):
+            return [m for d in data if (m := cls.from_dict(d)) is not None]
+        return []
+
+
+@dataclass
+class SonarPreview:
+    """``client.sonars.preview``: expected volume for a spec over the trailing window."""
+    window_days: int = 30
+    total: int = 0
+    per_day: List[dict] = field(default_factory=list)  # [{"day": ISO bucket, "count": n}]
+    samples: List[dict] = field(default_factory=list)  # [{"id", "service", "created_at", "snippet", "url"}]
+
+    @classmethod
+    def from_dict(cls, d: Optional[dict]) -> Optional[SonarPreview]:
+        if not d:
+            return None
+        return cls(
+            window_days=d.get("window_days", 30),
+            total=d.get("total", 0),
+            per_day=d.get("per_day") or [],
+            samples=d.get("samples") or [],
+        )

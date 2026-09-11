@@ -6,6 +6,8 @@
 //	feed, err := client.Feeds.Get("surf/topic/technology")
 //	posts, err := client.Feeds.GetPosts("surf/topic/technology", &surf.PostsOptions{Limit: 20})
 //	summary, err := client.AI.FeedSummary("surf/topic/technology", 20)
+//	sonar, err := client.Sonars.Create(surf.SonarRequest{Name: "OpenSearch chatter",
+//	    Spec: &surf.SonarSpec{Subject: surf.SonarSubject{Hashtags: []string{"#opensearch"}}}})
 package surf
 
 import (
@@ -54,6 +56,7 @@ type Client struct {
 	Notifications *NotificationsAPI
 	Preferences   *PreferencesAPI
 	CustomFeeds   *CustomFeedsAPI
+	Sonars        *SonarsAPI
 	Media         *MediaAPI
 	Longform      *LongformAPI
 	Diagnostics   *DiagnosticsAPI
@@ -114,6 +117,7 @@ func NewClient(apiKey string, opts ...ClientOption) *Client {
 	c.Notifications = &NotificationsAPI{c: c}
 	c.Preferences = &PreferencesAPI{c: c}
 	c.CustomFeeds = &CustomFeedsAPI{c: c}
+	c.Sonars = &SonarsAPI{c: c}
 	c.Media = &MediaAPI{c: c}
 	c.Longform = &LongformAPI{c: c}
 	c.Diagnostics = &DiagnosticsAPI{c: c}
@@ -1588,6 +1592,87 @@ func (a *CustomFeedsAPI) UpdateOperator(feedId, opId string, op interface{}) (js
 }
 func (a *CustomFeedsAPI) RemoveOperator(feedId, opId string) error {
 	return a.c.del("/custom/" + feedId + "/operators/" + opId)
+}
+
+// =========================================================================
+// Sonars
+// =========================================================================
+
+// SonarsAPI provides Sonars: standing watches on the open social web
+// (read:sonars / write:sonars scopes).
+//
+// A Sonar is a saved spec — WHAT to listen for (a search query, topics,
+// hashtags), WHERE (surfaces: bluesky, mastodon, rss, podcast, youtube,
+// leaflet) and content filters — matched against every new post as it is
+// indexed. Matches land in the Sonar's ledger and, for the "instant" cadence
+// with a "push" channel, arrive as a push notification. Preview a spec before
+// saving to see its volume.
+//
+//	spec := surf.SonarSpec{
+//	    Subject:  surf.SonarSubject{Hashtags: []string{"#opensearch"}},
+//	    Surfaces: []string{"bluesky", "mastodon"},
+//	}
+//	raw, err := client.Sonars.Preview(spec, 7)
+//	raw, err = client.Sonars.Create(surf.SonarRequest{Name: "OpenSearch chatter", Spec: &spec})
+//	var sonar surf.Sonar
+//	_ = json.Unmarshal(raw, &sonar)
+//	raw, err = client.Sonars.Matches(sonar.ID, 0, 50)
+//
+// Responses decode into Sonar, SonarMatchPage and SonarPreview (models.go).
+type SonarsAPI struct{ c *Client }
+
+// Create creates a Sonar; it is live when the call returns. body is a
+// SonarRequest (or any JSON-shaped value) with at least name and spec. A 400
+// names the spec problem (empty subject, short term, unknown surface...).
+func (a *SonarsAPI) Create(body interface{}) (json.RawMessage, error) {
+	return a.c.post("/sonars", body)
+}
+
+// List returns the caller's Sonars, newest first.
+func (a *SonarsAPI) List() (json.RawMessage, error) { return a.c.get("/sonars", nil) }
+
+// Get returns one Sonar; 404 when absent or someone else's.
+func (a *SonarsAPI) Get(id string) (json.RawMessage, error) {
+	return a.c.get("/sonars/"+url.PathEscape(id), nil)
+}
+
+// Update PATCHes a Sonar: only the fields present in body change. Use a
+// SonarRequest for the common case; to clear daily_cap send an explicit null,
+// e.g. map[string]interface{}{"daily_cap": nil} (omitempty cannot express it).
+// A new spec re-registers the live query only when it compiles differently.
+func (a *SonarsAPI) Update(id string, body interface{}) (json.RawMessage, error) {
+	return a.c.patch("/sonars/"+url.PathEscape(id), body)
+}
+
+// Delete removes a Sonar and its match history (204).
+func (a *SonarsAPI) Delete(id string) error { return a.c.del("/sonars/" + url.PathEscape(id)) }
+
+// Matches returns one page of the Sonar's match ledger, newest first, as a
+// SonarMatchPage. before is the next_before cursor from the previous page (0 =
+// first page); limit <= 0 uses the server default of 50 (max 200).
+func (a *SonarsAPI) Matches(id string, before int64, limit int) (json.RawMessage, error) {
+	v := url.Values{}
+	if before > 0 {
+		v.Set("before", strconv.FormatInt(before, 10))
+	}
+	if limit > 0 {
+		v.Set("limit", strconv.Itoa(limit))
+	}
+	return a.c.get("/sonars/"+url.PathEscape(id)+"/matches", v)
+}
+
+// Preview reports what a spec would have matched over the trailing window
+// (days 1-30; <= 0 uses the server default of 30): total, per-day histogram
+// and five newest samples, as a SonarPreview. The same compiled query the
+// matcher uses, so the number is a real forecast; cached server-side for 15
+// minutes per compiled spec. Requires write:sonars.
+func (a *SonarsAPI) Preview(spec interface{}, days int) (json.RawMessage, error) {
+	v := url.Values{}
+	if days > 0 {
+		v.Set("days", strconv.Itoa(days))
+	}
+	data, err := a.c.do("POST", "/sonars/preview", v, spec)
+	return json.RawMessage(data), err
 }
 
 // =========================================================================

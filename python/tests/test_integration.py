@@ -269,6 +269,83 @@ class TestCustomFeedThemes:
 
 
 # ---------------------------------------------------------------------------
+# Sonars
+# ---------------------------------------------------------------------------
+
+class TestSonars:
+    """Create -> get -> update -> matches -> preview -> list -> delete (write:sonars)."""
+
+    sonar_id = None
+    SPEC = {"subject": {"hashtags": ["#surfsdktest"]}, "surfaces": ["bluesky", "mastodon"]}
+
+    @pytest.fixture(scope="class", autouse=True)
+    def _cleanup(self, request, client):
+        """Best-effort teardown: a failure between create and delete must not leak a live Sonar."""
+        yield
+        if TestSonars.sonar_id:
+            try:
+                client.sonars.delete(TestSonars.sonar_id)
+            except SurfAPIError:
+                pass
+            TestSonars.sonar_id = None
+
+    def test_01_preview(self, client):
+        preview = skip_on_scope(lambda: retry_on_rate_limit(lambda: client.sonars.preview(self.SPEC, days=7)))
+        assert preview["window_days"] == 7
+        assert "total" in preview and isinstance(preview["per_day"], list) and isinstance(preview["samples"], list)
+
+    def test_02_create(self, client):
+        result = skip_on_scope(lambda: retry_on_rate_limit(lambda: client.sonars.create(
+            f"SDK Test {int(time.time())}", self.SPEC, daily_cap=5)))
+        TestSonars.sonar_id = result["id"]
+        assert TestSonars.sonar_id
+        assert result["enabled"] is True and result["cadence"] == "instant"
+        assert result["channels"] == [{"type": "push"}]
+        assert result["daily_cap"] == 5
+        assert result["spec"]["subject"]["hashtags"] == ["#surfsdktest"]
+
+    def test_03_get_and_list(self, client):
+        if not self.sonar_id:
+            pytest.skip("No sonar created")
+        sonar = retry_on_rate_limit(lambda: client.sonars.get(self.sonar_id))
+        assert sonar["id"] == self.sonar_id
+        sonars = retry_on_rate_limit(lambda: client.sonars.list())
+        assert any(s["id"] == self.sonar_id for s in sonars)
+
+    def test_04_update_and_clear_cap(self, client):
+        if not self.sonar_id:
+            pytest.skip("No sonar created")
+        updated = retry_on_rate_limit(lambda: client.sonars.update(self.sonar_id, name="SDK Test renamed", enabled=False))
+        assert updated["name"] == "SDK Test renamed" and updated["enabled"] is False
+        assert updated["daily_cap"] == 5, "an omitted field is left alone"
+        cleared = retry_on_rate_limit(lambda: client.sonars.update(self.sonar_id, daily_cap=None))
+        assert cleared["daily_cap"] is None, "an explicit null clears the cap"
+
+    def test_05_matches_page_shape(self, client):
+        if not self.sonar_id:
+            pytest.skip("No sonar created")
+        page = retry_on_rate_limit(lambda: client.sonars.matches(self.sonar_id, limit=5))
+        assert isinstance(page["matches"], list)
+        assert "next_before" in page
+        assert list(client.sonars.iter_matches(self.sonar_id, limit=5)) == page["matches"][:5]
+
+    def test_06_validation_is_a_400(self, client):
+        if not self.sonar_id:
+            pytest.skip("No sonar created (token lacks write:sonars)")
+        with pytest.raises(SurfAPIError) as e:
+            retry_on_rate_limit(lambda: client.sonars.preview({"subject": {"query": "ab"}}))
+        assert e.value.status_code == 400  # every text term must be at least 3 characters
+
+    def test_07_delete(self, client):
+        if not self.sonar_id:
+            pytest.skip("No sonar created")
+        assert retry_on_rate_limit(lambda: client.sonars.delete(self.sonar_id)) == {}
+        with pytest.raises(SurfNotFoundError):
+            client.sonars.get(self.sonar_id)
+        TestSonars.sonar_id = None
+
+
+# ---------------------------------------------------------------------------
 # Write Ops -- Mastodon
 # ---------------------------------------------------------------------------
 
