@@ -157,7 +157,8 @@ class SonarsApiTest {
     @Test
     void previewPostsTheSpecWithDaysAsAQueryParam() {
         responses.add("{\"window_days\":7,\"total\":42,\"per_day\":[{\"day\":\"2026-09-09T00:00:00.000Z\",\"count\":42}],"
-                + "\"samples\":[{\"id\":\"x\",\"service\":\"bluesky\",\"snippet\":\"…\"}]}");
+                + "\"samples\":[{\"id\":\"x\",\"service\":\"bluesky\",\"snippet\":\"and today it is iPhone Air Day\",\"matched_in\":\"transcript_digest\"},"
+                + "{\"id\":\"y\",\"service\":\"mastodon\",\"snippet\":\"testing #foobar\"}]}");
         SonarPreview p = client.sonars.preview(SPEC, 7);
         assertEquals("POST", calls.get(0)[0]);
         assertEquals("/v1/sonars/preview", calls.get(0)[1]);
@@ -165,6 +166,12 @@ class SonarsApiTest {
         assertEquals("{\"subject\":{\"hashtags\":[\"#opensearch\"]},\"surfaces\":[\"bluesky\",\"mastodon\"]}", calls.get(0)[3]);
         assertEquals(7, p.windowDays());
         assertEquals(42, p.total());
+        // matched_in maps from the wire name when present (a highlighted text match) and is null
+        // when absent (hashtag / topic matches, and older servers that never send it)
+        assertEquals("transcript_digest", p.samples().get(0).matchedIn());
+        assertEquals("and today it is iPhone Air Day", p.samples().get(0).snippet());
+        assertNull(p.samples().get(1).matchedIn());
+        assertEquals("testing #foobar", p.samples().get(1).snippet(), "the fallback snippet is still carried");
         assertEquals(1, p.perDay().size());
         assertEquals("bluesky", p.samples().get(0).service());
 

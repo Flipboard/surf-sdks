@@ -964,7 +964,10 @@ class SonarPreview:
     window_days: int = 30
     total: int = 0
     per_day: List[dict] = field(default_factory=list)  # [{"day": ISO bucket, "count": n}]
-    samples: List[dict] = field(default_factory=list)  # [{"id", "service", "created_at", "snippet", "url"}]
+    # [{"id", "service", "created_at", "snippet", "url", "matched_in"}] — snippet is the highlighted
+    # fragment that matched when there is one, matched_in says where (transcript_digest = spoken
+    # podcast content, content, title, summary, ...; None for hashtag/topic matches)
+    samples: List[dict] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, d: Optional[dict]) -> Optional[SonarPreview]:
