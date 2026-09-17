@@ -117,7 +117,7 @@ func TestSonarsMatchesAndPreviewParams(t *testing.T) {
 	c, calls := newSonarServer(t,
 		`{"matches":[{"id":3,"sonar_id":"abc","post_id":"p3","matched_at":"2026-09-10T00:00:00Z","why":{"matched_by":"hashtag"},"delivered":true}],"next_before":3}`,
 		`{}`,
-		`{"window_days":7,"total":42,"per_day":[{"day":"2026-09-09T00:00:00.000Z","count":42}],"samples":[{"id":"x","service":"bluesky"}]}`,
+		`{"window_days":7,"total":42,"per_day":[{"day":"2026-09-09T00:00:00.000Z","count":42}],"samples":[{"id":"x","service":"bluesky","snippet":"and today it is iPhone Air Day","matched_in":"transcript_digest"},{"id":"y","service":"mastodon","snippet":"testing #foobar"}]}`,
 	)
 	raw, err := c.Sonars.Matches("abc", 0, 0)
 	if err != nil {
@@ -156,6 +156,17 @@ func TestSonarsMatchesAndPreviewParams(t *testing.T) {
 	}
 	if preview.WindowDays != 7 || preview.Total != 42 || len(preview.PerDay) != 1 || preview.Samples[0].Service == nil || *preview.Samples[0].Service != "bluesky" {
 		t.Errorf("preview = %+v", preview)
+	}
+	// matched_in decodes when present (a highlighted text match) and stays nil when absent
+	// (hashtag / topic matches, and older servers that never send it)
+	if preview.Samples[0].MatchedIn == nil || *preview.Samples[0].MatchedIn != "transcript_digest" {
+		t.Errorf("Samples[0].MatchedIn = %v, want transcript_digest", preview.Samples[0].MatchedIn)
+	}
+	if preview.Samples[1].MatchedIn != nil {
+		t.Errorf("Samples[1].MatchedIn = %q, want nil for an unhighlighted sample", *preview.Samples[1].MatchedIn)
+	}
+	if preview.Samples[1].Snippet == nil || *preview.Samples[1].Snippet != "testing #foobar" {
+		t.Errorf("the fallback snippet is still carried: %+v", preview.Samples[1])
 	}
 	if _, err := c.Sonars.Preview(sonarSpec, 0); err != nil {
 		t.Fatal(err)
