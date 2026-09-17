@@ -6,6 +6,12 @@ All notable changes to the Surf API SDKs will be documented here. All SDKs share
 
 ## Unreleased
 
+### Added
+- **Sonar preview samples say why they matched** — each `samples[]` entry of `POST /sonars/preview` now carries `matched_in` (`transcript_digest` | `content` | `reblog_content` | `title` | `summary` | `media_description`; absent for hashtag/topic matches) and its `snippet` is the highlighted fragment that matched the spec rather than the post's first words. TypeScript `SonarPreviewSample.matched_in`, Go `SonarPreviewSample.MatchedIn`, Java `SonarPreview.Sample.matchedIn()`; Python samples are dicts and gain the key.
+
+### Changed
+- **Search and Sonars now match spoken podcast content.** Since 2026-09-16 every transcribed podcast post carries a bounded `transcript_digest` (intro words, transcript-topic vocabulary, chapter/soundbite titles, spoken claims; ≤ 8 KB) and `/search/posts`, custom-feed search operators, Sonar previews and newly compiled Sonars match it alongside `content`/`title`/`summary`. No SDK code change is needed to benefit; expect podcast episodes to appear for queries that only occur in what was said. The back catalogue was backfilled 2026-09-17.
+
 ### Changed
 - **`SurfAgent` and MCP authentication** (Python, TypeScript) — no SDK method signature changes; this is about the MCP transport `SurfAgent` speaks to. `mcp.surf.social` now treats a production (`surf_sk_live_`) `X-API-Key` as **authentication**, not only as the rate-limit tiering signal it has been since July, so the key `SurfAgent` already forwards is now what authenticates its MCP calls. Two consequences for SDK users. **Anonymous MCP access is being retired**: an agent constructed without `surf_api_key` / `surfApiKey` works today and will get `401` once that lands, so pass a production key. And **test (`surf_sk_test_`) keys are refused on MCP** (they remain valid on the REST API the rest of this SDK uses), so an agent configured with a sandbox key falls back to anonymous today and will fail once anonymous access ends. Separately, the MCP write tools (posting, saving a feed, favouriting, feed themes, podcast clips) now require the OAuth token's `scope` to include `write`; that is a user-delegated flow the SDKs do not perform, so it affects `allow_writes` agents only when the host holds a read-only token. Full detail in the [devportal changelog](https://surf.social/devportal/v1/changelog) and [MCP guide](https://surf.social/devportal/v1/mcp-guide).
 

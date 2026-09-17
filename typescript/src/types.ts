@@ -765,8 +765,15 @@ export interface SonarPreviewSample {
   id: string;
   service?: string | null;
   created_at?: string | null;
+  /** The fragment that matched the spec when the search highlighted one (plain text), else the post's own first words. */
   snippet?: string | null;
   url?: string | null;
+  /**
+   * Where the fragment matched: `transcript_digest` (spoken podcast content), `content`,
+   * `reblog_content`, `title`, `summary`, `media_description`; absent when nothing was
+   * highlighted (hashtag / topic subjects match structured fields, not text).
+   */
+  matched_in?: 'transcript_digest' | 'content' | 'reblog_content' | 'title' | 'summary' | 'media_description' | (string & {}) | null;
 }
 
 /** `sonars.preview`: what a spec would have matched over the trailing window. */

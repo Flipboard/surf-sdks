@@ -23,13 +23,22 @@ public record SonarPreview(
     ) {
     }
 
+    /**
+     * @param snippet   the fragment that matched the spec when the search highlighted one (plain
+     *                  text), else the post's own first words
+     * @param matchedIn where it matched: {@code transcript_digest} (spoken podcast content),
+     *                  {@code content}, {@code reblog_content}, {@code title}, {@code summary},
+     *                  {@code media_description}; null when nothing was highlighted (hashtag /
+     *                  topic subjects match structured fields, not text)
+     */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Sample(
             @JsonProperty("id") String id,
             @JsonProperty("service") String service,
             @JsonProperty("created_at") String createdAt,
             @JsonProperty("snippet") String snippet,
-            @JsonProperty("url") String url
+            @JsonProperty("url") String url,
+            @JsonProperty("matched_in") String matchedIn
     ) {
     }
 }

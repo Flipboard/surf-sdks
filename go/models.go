@@ -705,8 +705,14 @@ type SonarPreviewSample struct {
 	ID        string  `json:"id"`
 	Service   *string `json:"service,omitempty"`
 	CreatedAt *string `json:"created_at,omitempty"`
-	Snippet   *string `json:"snippet,omitempty"`
-	URL       *string `json:"url,omitempty"`
+	// Snippet is the fragment that matched the spec when the search highlighted one (plain
+	// text), else the post's own first words.
+	Snippet *string `json:"snippet,omitempty"`
+	URL     *string `json:"url,omitempty"`
+	// MatchedIn is where the fragment matched: "transcript_digest" (spoken podcast content),
+	// "content", "reblog_content", "title", "summary", "media_description"; nil when nothing was
+	// highlighted (hashtag / topic subjects match structured fields, not text).
+	MatchedIn *string `json:"matched_in,omitempty"`
 }
 
 // SonarPreview is the response of Sonars.Preview: what a spec would have
