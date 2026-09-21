@@ -1508,11 +1508,15 @@ class _PlaybackAPI:
         ``duration_ms`` / ``completed``). Applied in the order given, so two
         reports for one episode settle correctly.
 
+        A ``None`` inside an item is dropped rather than sent as a JSON null, so a
+        batch entry omits an unknown ``duration_ms`` the way :meth:`report` does;
+        ``0`` and ``False`` are real values and are kept.
+
         Note that ``played_at`` is stamped when the report ARRIVES, so a batch
         handed over after a spell offline carries the hand-over time rather
         than the listening time.
         """
-        self._c._post("/playback/batch", json={"items": list(items)})
+        self._c._post("/playback/batch", json={"items": _playback_items(items)})
 
     def recent(self, limit: int = 50) -> list:
         """The account's most recently played episodes, newest first (max 200)."""
@@ -1544,6 +1548,17 @@ def _playback_body(post_id: str, feed_surf_id: str, position_ms: int,
     if completed is not None:
         body["completed"] = completed
     return body
+
+
+def _playback_items(items) -> List[dict]:
+    """Batch entries with their None values dropped, as :func:`_playback_body` does.
+
+    A caller assembling items programmatically will often carry ``duration_ms=None``
+    for an episode of unknown length. Forwarding that as a JSON null would ask the
+    server to clear a duration an earlier report established, which is the opposite
+    of what omitting it means. ``False`` and ``0`` are real values and stay.
+    """
+    return [{k: v for k, v in item.items() if v is not None} for item in items]
 
 
 class _SonarsAPI:

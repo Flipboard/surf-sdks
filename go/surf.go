@@ -1597,30 +1597,9 @@ func (a *CustomFeedsAPI) RemoveOperator(feedId, opId string) error {
 }
 
 // =========================================================================
-// Sonars
+// Playback
 // =========================================================================
 
-// SonarsAPI provides Sonars: standing watches on the open social web
-// (read:sonars / write:sonars scopes).
-//
-// A Sonar is a saved spec — WHAT to listen for (a search query, topics,
-// hashtags), WHERE (surfaces: bluesky, mastodon, rss, podcast, youtube,
-// leaflet) and content filters — matched against every new post as it is
-// indexed. Matches land in the Sonar's ledger and, for the "instant" cadence
-// with a "push" channel, arrive as a push notification. Preview a spec before
-// saving to see its volume.
-//
-//	spec := surf.SonarSpec{
-//	    Subject:  surf.SonarSubject{Hashtags: []string{"#opensearch"}},
-//	    Surfaces: []string{"bluesky", "mastodon"},
-//	}
-//	raw, err := client.Sonars.Preview(spec, 7)
-//	raw, err = client.Sonars.Create(surf.SonarRequest{Name: "OpenSearch chatter", Spec: &spec})
-//	var sonar surf.Sonar
-//	_ = json.Unmarshal(raw, &sonar)
-//	raw, err = client.Sonars.Matches(sonar.ID, 0, 50)
-//
-// Responses decode into Sonar, SonarMatchPage and SonarPreview (models.go).
 // PlaybackReport is one position report. DurationMs and Completed are
 // pointers so an omitted value is absent from the JSON rather than sent as a
 // zero: the server leaves a known duration alone when a report omits it, and
@@ -1702,6 +1681,31 @@ func (a *PlaybackAPI) Positions(postIDs []string) (json.RawMessage, error) {
 	return a.c.get("/playback/positions", params)
 }
 
+// =========================================================================
+// Sonars
+// =========================================================================
+
+// SonarsAPI provides Sonars: standing watches on the open social web
+// (read:sonars / write:sonars scopes).
+//
+// A Sonar is a saved spec — WHAT to listen for (a search query, topics,
+// hashtags), WHERE (surfaces: bluesky, mastodon, rss, podcast, youtube,
+// leaflet) and content filters — matched against every new post as it is
+// indexed. Matches land in the Sonar's ledger and, for the "instant" cadence
+// with a "push" channel, arrive as a push notification. Preview a spec before
+// saving to see its volume.
+//
+//	spec := surf.SonarSpec{
+//	    Subject:  surf.SonarSubject{Hashtags: []string{"#opensearch"}},
+//	    Surfaces: []string{"bluesky", "mastodon"},
+//	}
+//	raw, err := client.Sonars.Preview(spec, 7)
+//	raw, err = client.Sonars.Create(surf.SonarRequest{Name: "OpenSearch chatter", Spec: &spec})
+//	var sonar surf.Sonar
+//	_ = json.Unmarshal(raw, &sonar)
+//	raw, err = client.Sonars.Matches(sonar.ID, 0, 50)
+//
+// Responses decode into Sonar, SonarMatchPage and SonarPreview (models.go).
 type SonarsAPI struct{ c *Client }
 
 // Create creates a Sonar; it is live when the call returns. body is a

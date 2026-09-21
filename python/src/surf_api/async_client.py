@@ -27,7 +27,7 @@ except ImportError:
         "httpx is required for the async client. Install with: pip install surf-api[async]"
     )
 
-from .client import _services_param, _playback_body, episode_url_sha1
+from .client import _services_param, _playback_body, _playback_items, episode_url_sha1
 from .exceptions import (
     SurfAPIError,
     SurfAuthError,
@@ -904,8 +904,12 @@ class _AsyncPlaybackAPI:
             post_id, feed_surf_id, position_ms, duration_ms, completed))
 
     async def report_batch(self, items: List[dict]) -> None:
-        """Report a whole session at once (up to 100), applied in the order given."""
-        await self._c._post("/playback/batch", json={"items": list(items)})
+        """Report a whole session at once (up to 100), applied in the order given.
+
+        A ``None`` inside an item is dropped rather than sent as a JSON null, so a
+        batch entry omits an unknown ``duration_ms`` the way :meth:`report` does.
+        """
+        await self._c._post("/playback/batch", json={"items": _playback_items(items)})
 
     async def recent(self, limit: int = 50) -> list:
         """The account's most recently played episodes, newest first (max 200)."""
