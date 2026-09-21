@@ -27,7 +27,7 @@ except ImportError:
         "httpx is required for the async client. Install with: pip install surf-api[async]"
     )
 
-from .client import _services_param, episode_url_sha1
+from .client import _services_param, _playback_body, _playback_items, episode_url_sha1
 from .exceptions import (
     SurfAPIError,
     SurfAuthError,
@@ -102,6 +102,7 @@ class AsyncSurfClient:
         self.preferences = _AsyncPreferencesAPI(self)
         self.custom_feeds = _AsyncCustomFeedsAPI(self)
         self.sonars = _AsyncSonarsAPI(self)
+        self.playback = _AsyncPlaybackAPI(self)
         self.media = _AsyncMediaAPI(self)
         self.longform = _AsyncLongformAPI(self)
         self.diagnostics = _AsyncDiagnosticsAPI(self)
@@ -879,6 +880,48 @@ class _AsyncCustomFeedsAPI:
 # ==========================================================================
 # Sonars
 # ==========================================================================
+
+class _AsyncPlaybackAPI:
+    """Playback positions (read:playback / write:playback). See the sync ``_PlaybackAPI``.
+
+    A position belongs to the account rather than the device, so it resumes
+    wherever it is picked up. Reporting also feeds the recently-played signal
+    behind new-episode notifications.
+
+    Example:
+        await client.playback.report("post-123", "surf/podcast/abc", 125_000)
+        for item in await client.playback.recent(limit=10):
+            print(item["post_id"], item["position_ms"])
+    """
+
+    def __init__(self, client: AsyncSurfClient):
+        self._c = client
+
+    async def report(self, post_id: str, feed_surf_id: str, position_ms: int,
+                     duration_ms: int = None, completed: bool = None) -> None:
+        """Record where the listener got to. See the sync namespace for the argument contract."""
+        await self._c._post("/playback", json=_playback_body(
+            post_id, feed_surf_id, position_ms, duration_ms, completed))
+
+    async def report_batch(self, items: List[dict]) -> None:
+        """Report a whole session at once (up to 100), applied in the order given.
+
+        A ``None`` inside an item is dropped rather than sent as a JSON null, so a
+        batch entry omits an unknown ``duration_ms`` the way :meth:`report` does.
+        """
+        await self._c._post("/playback/batch", json={"items": _playback_items(items)})
+
+    async def recent(self, limit: int = 50) -> list:
+        """The account's most recently played episodes, newest first (max 200)."""
+        return await self._c._get("/playback", params={"limit": limit})
+
+    async def positions(self, post_ids: List[str]) -> list:
+        """Positions for specific episodes (up to 100); one with none is absent, not zero."""
+        ids = [i for i in post_ids if i]
+        if not ids:
+            return []
+        return await self._c._get("/playback/positions", params={"post_id": ids})
+
 
 class _AsyncSonarsAPI:
     """Sonars (read:sonars / write:sonars scopes). See the sync ``_SonarsAPI`` for the spec shape.

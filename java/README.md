@@ -65,6 +65,7 @@ System.out.println(client.ai.feedSummary("surf/topic/technology").feedSummary())
 - **Audio**: Radio stations, daily briefings, transcripts, quizzes, text-to-speech
 - **Custom Feeds**: Create, update, delete, clone, publish custom feeds with typed operators
 - **Sonars**: Standing watches on the open social web — save a typed spec, page the match ledger, preview volume first
+- **Playback**: Report and read back podcast playback positions, per account rather than per device
 - **Account**: User info, lookup, profile links, connected apps
 - **Notifications**: Read notifications, manage badge counts
 - **Content**: URL resolution, article extraction, language detection, enrichment
@@ -98,6 +99,7 @@ mirroring the backend DTOs. Every model is annotated `@JsonIgnoreProperties(igno
 | `sonars.get/create/update/rename/setEnabled/updateSpec/clearDailyCap(...)` | `Sonar` |
 | `sonars.matches(...)` | `SonarMatchPage` (`iterateMatches(...)` yields `SonarMatch`) |
 | `sonars.preview(...)` | `SonarPreview` |
+| `playback.recent(...)`, `playback.positions(...)` | `List<Map<String, Object>>` (positions are dynamic) |
 | `media.upload(...)` | `MediaUploadResponse` (feed cover URL) |
 | `media.uploadAttachment(...)`, `media.getAttachment(...)` | `Map<String, Object>` (post attachment; `ready` flag) |
 | `longform.getDocument(...)` | `Document` |
@@ -216,6 +218,43 @@ client.sonars.delete(sonar.id());
 ```
 
 Scopes: `read:sonars` (list/get/matches) and `write:sonars` (create/update/delete/preview).
+
+## Playback positions
+
+A position belongs to the account, not the device, so a phone and a tablet
+resume in the same place. Reporting also feeds the recently-played signal behind
+new-episode notifications: a show played in the last 90 days is one Surf treats
+as followed.
+
+```java
+// Where the listener got to. `feedSurfId` is the SHOW the episode belongs to.
+client.playback.report("post-123", "surf/podcast/abc", 125_000L);
+client.playback.report("post-123", "surf/podcast/abc", 125_000L, 3_600_000L, null);
+
+// Finished. Sticky server-side: a later report from earlier does not un-finish it.
+client.playback.report("post-123", "surf/podcast/abc", 3_600_000L, null, true);
+
+// A client coming back online hands over a whole session at once (max 100).
+// `played_at` is stamped on ARRIVAL, so this carries the hand-over time.
+client.playback.reportBatch(List.of(
+    PlaybackApi.item("post-123", "surf/podcast/abc", 900_000L),
+    PlaybackApi.item("post-124", "surf/podcast/abc", 120_000L)));
+
+// Continue listening (newest first, max 200)
+for (Map<String, Object> item : client.playback.recent(10)) {
+    System.out.println(item.get("post_id") + " " + item.get("position_ms"));
+}
+
+// Resume points for a whole list screen, in one call. An episode with no stored
+// position is ABSENT rather than zero, which would read as "stopped at the start".
+List<Map<String, Object>> positions =
+    client.playback.positions(List.of("post-123", "post-124"));
+```
+
+A null `durationMs` or `completed` is left out of the request rather than sent as
+`0` / `false`, so omitting a duration leaves whatever an earlier report
+established. Scopes: `read:playback` (recent/positions) and `write:playback`
+(report/batch); a coarse `read` / `write` OAuth grant satisfies them.
 
 ## Audio
 

@@ -43,6 +43,7 @@ trending = client.feeds.get_posts("surf/trending/dynamic", limit=10)
 - **Audio**: Radio stations, daily briefings, transcripts, quizzes
 - **Custom Feeds**: Create, update, delete, clone, publish custom feeds
 - **Sonars**: Standing watches on the open social web — save a spec, get pinged on every new match
+- **Playback**: Report and read back podcast playback positions, per account rather than per device
 - **Account**: User info, activity, notifications, preferences
 - **Media**: Upload images
 - **Rate Limiting**: Automatic rate limit tracking via `client.rate_limit`
@@ -124,6 +125,40 @@ client.sonars.delete(sonar["id"])
 ```
 
 Scopes: `read:sonars` (list/get/matches) and `write:sonars` (create/update/delete/preview).
+
+## Playback positions
+
+A position belongs to the account, not the device, so a phone and a tablet
+resume in the same place. Reporting also feeds the recently-played signal behind
+new-episode notifications: a show played in the last 90 days is one Surf treats
+as followed.
+
+```python
+# Where the listener got to. `feed_surf_id` is the SHOW the episode belongs to.
+client.playback.report("post-123", "surf/podcast/abc", 125_000, duration_ms=3_600_000)
+
+# Finished. Sticky server-side: a later report from earlier does not un-finish it.
+client.playback.report("post-123", "surf/podcast/abc", 3_600_000, completed=True)
+
+# A client coming back online hands over a whole session at once (max 100).
+# `played_at` is stamped on ARRIVAL, so this carries the hand-over time.
+client.playback.report_batch([
+    {"post_id": "post-123", "feed_surf_id": "surf/podcast/abc", "position_ms": 900_000},
+    {"post_id": "post-124", "feed_surf_id": "surf/podcast/abc", "position_ms": 120_000},
+])
+
+# Continue listening (newest first, max 200)
+for item in client.playback.recent(limit=10):
+    print(item["post_id"], item["position_ms"])
+
+# Resume points for a whole list screen, in one call. An episode with no stored
+# position is ABSENT rather than zero, which would read as "stopped at the start".
+by_id = {p["post_id"]: p for p in client.playback.positions(["post-123", "post-124"])}
+```
+
+Omitting `duration_ms` leaves whatever an earlier report established rather than
+clearing it. Scopes: `read:playback` (recent/positions) and `write:playback`
+(report/batch); a coarse `read` / `write` OAuth grant satisfies them.
 
 ## Longform (standard.site / Leaflet)
 
