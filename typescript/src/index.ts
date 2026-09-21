@@ -121,6 +121,7 @@ export class SurfClient {
   public readonly preferences: PreferencesAPI;
   public readonly customFeeds: CustomFeedsAPI;
   public readonly sonars: SonarsAPI;
+  public readonly playback: PlaybackAPI;
   public readonly media: MediaAPI;
   public readonly longform: LongformAPI;
   public readonly diagnostics: DiagnosticsAPI;
@@ -145,6 +146,7 @@ export class SurfClient {
     this.preferences = new PreferencesAPI(this);
     this.customFeeds = new CustomFeedsAPI(this);
     this.sonars = new SonarsAPI(this);
+    this.playback = new PlaybackAPI(this);
     this.media = new MediaAPI(this);
     this.longform = new LongformAPI(this);
     this.diagnostics = new DiagnosticsAPI(this);
@@ -994,6 +996,79 @@ export interface SonarRequest {
   /** Default `[{ type: 'push' }]` (the only channel delivered today). */
   channels?: SonarChannel[];
   daily_cap?: number | null;
+}
+
+/** One position report. `duration_ms` and `completed` are optional; omitting them changes nothing stored. */
+export interface PlaybackReport {
+  post_id: string;
+  /** The show the episode belongs to. Required: the recently-played signal is about the show. */
+  feed_surf_id: string;
+  /** Milliseconds from the start. `0` is a real position. */
+  position_ms: number;
+  /** Omitting it leaves whatever an earlier report established, rather than clearing it. */
+  duration_ms?: number;
+  /** Sticky server-side: a later report from earlier in the episode does not un-finish it. */
+  completed?: boolean;
+}
+
+/** A stored position, as the API returns it. */
+export interface PlaybackPosition extends PlaybackReport {
+  /** Stamped when the report ARRIVED, not when the listening happened. */
+  played_at: string;
+}
+
+/**
+ * Playback positions: resume where you left off, on whichever device you pick up
+ * (`read:playback` / `write:playback`).
+ *
+ * A position belongs to the ACCOUNT rather than the device, so a phone and a
+ * tablet share one. Reporting also feeds the recently-played signal behind
+ * new-episode notifications: a show played in the last 90 days is one Surf
+ * treats as followed. That is a consequence of reporting, not a second call.
+ *
+ * @example
+ * ```ts
+ * await client.playback.report({ post_id: 'p1', feed_surf_id: 'surf/podcast/abc', position_ms: 125_000 });
+ * const recent = await client.playback.recent({ limit: 10 });
+ * const byId = new Map((await client.playback.positions(['a', 'b'])).map(p => [p.post_id, p]));
+ * ```
+ */
+class PlaybackAPI {
+  constructor(private c: SurfClient) {}
+
+  /** Record where the listener got to (204). */
+  report(body: PlaybackReport): Promise<void> {
+    return this.c._post<void>('/playback', body);
+  }
+
+  /**
+   * Report a whole session at once, for a client coming back online. Up to 100,
+   * applied in the order given so two reports for one episode settle correctly.
+   *
+   * `played_at` is stamped on arrival, so a batch handed over after a spell
+   * offline carries the hand-over time rather than the listening time.
+   */
+  reportBatch(items: PlaybackReport[]): Promise<void> {
+    return this.c._post<void>('/playback/batch', { items });
+  }
+
+  /** The account's most recently played episodes, newest first. `limit` defaults to 50 (max 200). */
+  recent(opts?: { limit?: number }): Promise<PlaybackPosition[]> {
+    return this.c._get<PlaybackPosition[]>('/playback', { limit: opts?.limit ?? 50 });
+  }
+
+  /**
+   * Positions for specific episodes, so a list costs one call rather than one per row.
+   *
+   * An episode with no stored position is ABSENT from the result rather than
+   * returned as zero, which could not be told from "started and stopped at the
+   * beginning". Up to 100 ids; an empty list makes no request.
+   */
+  async positions(postIds: string[]): Promise<PlaybackPosition[]> {
+    const ids = (postIds ?? []).filter(Boolean);
+    if (ids.length === 0) return [];
+    return this.c._get<PlaybackPosition[]>('/playback/positions', { post_id: ids });
+  }
 }
 
 /**

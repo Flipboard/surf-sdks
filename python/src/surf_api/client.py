@@ -102,6 +102,7 @@ class SurfClient:
         self.preferences = _PreferencesAPI(self)
         self.custom_feeds = _CustomFeedsAPI(self)
         self.sonars = _SonarsAPI(self)
+        self.playback = _PlaybackAPI(self)
         self.media = _MediaAPI(self)
         self.longform = _LongformAPI(self)
         self.diagnostics = _DiagnosticsAPI(self)
@@ -1454,6 +1455,96 @@ class _CustomFeedsAPI:
 # ==========================================================================
 # Sonars
 # ==========================================================================
+
+class _PlaybackAPI:
+    """Playback positions: resume where you left off, on whichever device you pick up.
+
+    A position belongs to the ACCOUNT rather than the device, so reporting from
+    a phone and then opening a tablet resumes in the same place. Reads need
+    ``read:playback``, writes ``write:playback``; a coarse ``read`` / ``write``
+    OAuth grant satisfies them.
+
+    Reporting also feeds the recently-played signal behind new-episode
+    notifications: a show played in the last 90 days is one Surf treats as
+    followed. That is a consequence of reporting, not a second call to make.
+
+    Example:
+        client.playback.report("post-123", "surf/podcast/abc", 125_000,
+                               duration_ms=3_600_000)
+
+        for item in client.playback.recent(limit=10):
+            print(item["post_id"], item["position_ms"])
+
+        # Every resume point for a list, in one call.
+        by_id = {p["post_id"]: p for p in client.playback.positions(["a", "b"])}
+    """
+
+    def __init__(self, client: SurfClient):
+        self._c = client
+
+    def report(self, post_id: str, feed_surf_id: str, position_ms: int,
+               duration_ms: int = None, completed: bool = None) -> None:
+        """Record where the listener got to.
+
+        Args:
+            post_id: The episode's post id (<= 255 characters).
+            feed_surf_id: The show the episode belongs to (<= 512 characters).
+                Required: the recently-played signal is about the show, and the
+                server does not resolve the episode to it.
+            position_ms: Milliseconds from the start. ``0`` is a real value.
+            duration_ms: The episode's length, when known. Omitting it leaves
+                whatever an earlier report established rather than clearing it.
+            completed: Set once the end is reached. Sticky server-side: a later
+                report from earlier in the episode does not un-finish it.
+        """
+        self._c._post("/playback", json=_playback_body(
+            post_id, feed_surf_id, position_ms, duration_ms, completed))
+
+    def report_batch(self, items: List[dict]) -> None:
+        """Report a whole session at once, for a client coming back online.
+
+        Up to 100 items, each shaped like :meth:`report`'s arguments
+        (``post_id``, ``feed_surf_id``, ``position_ms``, and optionally
+        ``duration_ms`` / ``completed``). Applied in the order given, so two
+        reports for one episode settle correctly.
+
+        Note that ``played_at`` is stamped when the report ARRIVES, so a batch
+        handed over after a spell offline carries the hand-over time rather
+        than the listening time.
+        """
+        self._c._post("/playback/batch", json={"items": list(items)})
+
+    def recent(self, limit: int = 50) -> list:
+        """The account's most recently played episodes, newest first (max 200)."""
+        return self._c._get("/playback", params={"limit": limit})
+
+    def positions(self, post_ids: List[str]) -> list:
+        """Positions for specific episodes, so a list costs one call rather than one per row.
+
+        An episode with no stored position is ABSENT from the result rather
+        than returned as zero, which could not be told from "started and
+        stopped at the beginning". Up to 100 ids.
+        """
+        ids = [i for i in post_ids if i]
+        if not ids:
+            return []
+        return self._c._get("/playback/positions", params={"post_id": ids})
+
+
+def _playback_body(post_id: str, feed_surf_id: str, position_ms: int,
+                   duration_ms=None, completed=None) -> dict:
+    """The wire body for one position. Shared by the sync and async namespaces."""
+    body: dict = {
+        "post_id": post_id,
+        "feed_surf_id": feed_surf_id,
+        "position_ms": position_ms,
+    }
+    if duration_ms is not None:
+        body["duration_ms"] = duration_ms
+    if completed is not None:
+        body["completed"] = completed
+    return body
+
 
 class _SonarsAPI:
     """Sonars: standing watches on the open social web (read:sonars / write:sonars scopes).

@@ -57,6 +57,7 @@ type Client struct {
 	Preferences   *PreferencesAPI
 	CustomFeeds   *CustomFeedsAPI
 	Sonars        *SonarsAPI
+	Playback      *PlaybackAPI
 	Media         *MediaAPI
 	Longform      *LongformAPI
 	Diagnostics   *DiagnosticsAPI
@@ -118,6 +119,7 @@ func NewClient(apiKey string, opts ...ClientOption) *Client {
 	c.Preferences = &PreferencesAPI{c: c}
 	c.CustomFeeds = &CustomFeedsAPI{c: c}
 	c.Sonars = &SonarsAPI{c: c}
+	c.Playback = &PlaybackAPI{c: c}
 	c.Media = &MediaAPI{c: c}
 	c.Longform = &LongformAPI{c: c}
 	c.Diagnostics = &DiagnosticsAPI{c: c}
@@ -1619,6 +1621,87 @@ func (a *CustomFeedsAPI) RemoveOperator(feedId, opId string) error {
 //	raw, err = client.Sonars.Matches(sonar.ID, 0, 50)
 //
 // Responses decode into Sonar, SonarMatchPage and SonarPreview (models.go).
+// PlaybackReport is one position report. DurationMs and Completed are
+// pointers so an omitted value is absent from the JSON rather than sent as a
+// zero: the server leaves a known duration alone when a report omits it, and
+// sending 0 would claim the episode has no length.
+type PlaybackReport struct {
+	PostID string `json:"post_id"`
+	// FeedSurfID is the show the episode belongs to. Required: the
+	// recently-played signal is about the show, and the server does not
+	// resolve the episode to it.
+	FeedSurfID string `json:"feed_surf_id"`
+	// PositionMs is milliseconds from the start. 0 is a real position, so it
+	// is always sent.
+	PositionMs int64  `json:"position_ms"`
+	DurationMs *int64 `json:"duration_ms,omitempty"`
+	Completed  *bool  `json:"completed,omitempty"`
+}
+
+// PlaybackPosition is a stored position as the API returns it. PlayedAt is
+// stamped when the report ARRIVED, not when the listening happened.
+type PlaybackPosition struct {
+	PostID     string `json:"post_id"`
+	FeedSurfID string `json:"feed_surf_id"`
+	PositionMs int64  `json:"position_ms"`
+	DurationMs *int64 `json:"duration_ms,omitempty"`
+	Completed  bool   `json:"completed"`
+	PlayedAt   string `json:"played_at"`
+}
+
+// PlaybackAPI covers playback positions: resume where you left off, on
+// whichever device you pick up (read:playback / write:playback).
+//
+// A position belongs to the ACCOUNT rather than the device. Reporting also
+// feeds the recently-played signal behind new-episode notifications: a show
+// played in the last 90 days is one Surf treats as followed. That is a
+// consequence of reporting, not a second call to make.
+type PlaybackAPI struct{ c *Client }
+
+// Report records where the listener got to (204).
+func (a *PlaybackAPI) Report(report PlaybackReport) error {
+	_, err := a.c.post("/playback", report)
+	return err
+}
+
+// ReportBatch reports a whole session at once, for a client coming back
+// online. Up to 100, applied in the order given so two reports for one episode
+// settle correctly. PlayedAt is stamped on arrival, so a batch handed over
+// after a spell offline carries the hand-over time rather than the listening
+// time.
+func (a *PlaybackAPI) ReportBatch(reports []PlaybackReport) error {
+	_, err := a.c.post("/playback/batch", map[string]interface{}{"items": reports})
+	return err
+}
+
+// Recent returns the account's most recently played episodes, newest first.
+// limit <= 0 uses the server default of 50 (max 200).
+func (a *PlaybackAPI) Recent(limit int) (json.RawMessage, error) {
+	params := url.Values{}
+	if limit > 0 {
+		params.Set("limit", strconv.Itoa(limit))
+	}
+	return a.c.get("/playback", params)
+}
+
+// Positions returns the stored positions for specific episodes, so a list
+// costs one call rather than one per row. An episode with no stored position
+// is ABSENT from the result rather than returned as zero, which could not be
+// told from "started and stopped at the beginning". Up to 100 ids; an empty
+// slice makes no request.
+func (a *PlaybackAPI) Positions(postIDs []string) (json.RawMessage, error) {
+	params := url.Values{}
+	for _, id := range postIDs {
+		if id != "" {
+			params.Add("post_id", id)
+		}
+	}
+	if len(params) == 0 {
+		return json.RawMessage("[]"), nil
+	}
+	return a.c.get("/playback/positions", params)
+}
+
 type SonarsAPI struct{ c *Client }
 
 // Create creates a Sonar; it is live when the call returns. body is a

@@ -92,6 +92,7 @@ public class SurfClient {
     public final PreferencesApi preferences;
     public final CustomFeedsApi customFeeds;
     public final SonarsApi sonars;
+    public final PlaybackApi playback;
     public final MediaApi media;
     public final LongformApi longform;
     public final DiagnosticsApi diagnostics;
@@ -150,6 +151,7 @@ public class SurfClient {
         this.preferences = new PreferencesApi(this);
         this.customFeeds = new CustomFeedsApi(this);
         this.sonars = new SonarsApi(this);
+        this.playback = new PlaybackApi(this);
         this.media = new MediaApi(this);
         this.longform = new LongformApi(this);
         this.diagnostics = new DiagnosticsApi(this);

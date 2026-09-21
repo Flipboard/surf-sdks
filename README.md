@@ -78,13 +78,14 @@ Feed feed = client.feeds.get("surf/topic/technology");
 | **Search** | Full-text search for feeds, posts, accounts, and podcasts |
 | **Custom Feeds** | Create personalized feeds from topics, hashtags, accounts, and RSS sources — with optional visual theming (header image, semantic colors, light/dark mode, responsive overrides) |
 | **Sonars** | Standing watches on the open social web: save a query / topic / hashtag spec, preview its volume, get pinged on every new match across Bluesky, Mastodon, RSS, podcasts, YouTube and Leaflet |
+| **Playback** | Report and read back podcast playback positions: resume where you left off on whichever device you pick up, and feed the recently-played signal behind new-episode notifications |
 | **AI** | Ask questions about feeds, generate summaries, build feeds from natural language |
 | **Content** | Resolve URLs, extract articles, detect language, analyze images |
 | **Audio** | Text-to-speech, radio stations, podcasts, daily briefings |
 | **Write** | Post, favourite, boost, bookmark -- target Bluesky or Mastodon with `?service=` |
 | **MCP** | Model Context Protocol integration for Claude and AI agents |
 
-90 endpoints across 14 categories. Full details in the [API Reference](https://developers.surf.social/devportal/v1/api-docs).
+94 endpoints across 15 categories. Full details in the [API Reference](https://developers.surf.social/devportal/v1/api-docs).
 
 ## Authentication
 
