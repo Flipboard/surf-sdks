@@ -24,9 +24,9 @@ import (
 )
 
 const (
-	defaultAuthBaseURL = "https://surf.social"
-	defaultTokenURL    = "https://surf.social/oauth/token"
-	defaultRevokeURL   = "https://surf.social/oauth/revoke"
+	defaultAuthBaseURL = "https://api.surf.social/v1"
+	defaultTokenURL    = "https://api.surf.social/v1/oauth/token"
+	defaultRevokeURL   = "https://api.surf.social/v1/oauth/revoke"
 )
 
 // OAuthTokens holds the tokens returned from the authorization server.

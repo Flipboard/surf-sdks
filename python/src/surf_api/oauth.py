@@ -43,9 +43,9 @@ from typing import Optional, Tuple
 from urllib.parse import urlencode
 
 
-DEFAULT_AUTH_URL = "https://surf.social"
-DEFAULT_TOKEN_URL = "https://surf.social/oauth/token"
-DEFAULT_REVOKE_URL = "https://surf.social/oauth/revoke"
+DEFAULT_AUTH_URL = "https://api.surf.social/v1"
+DEFAULT_TOKEN_URL = "https://api.surf.social/v1/oauth/token"
+DEFAULT_REVOKE_URL = "https://api.surf.social/v1/oauth/revoke"
 
 
 def generate_pkce() -> Tuple[str, str]:
