@@ -24,9 +24,9 @@
  * ```
  */
 
-const DEFAULT_AUTH_URL = 'https://surf.social';
-const DEFAULT_TOKEN_URL = 'https://surf.social/oauth/token';
-const DEFAULT_REVOKE_URL = 'https://surf.social/oauth/revoke';
+const DEFAULT_AUTH_URL = 'https://api.surf.social/v1';
+const DEFAULT_TOKEN_URL = 'https://api.surf.social/v1/oauth/token';
+const DEFAULT_REVOKE_URL = 'https://api.surf.social/v1/oauth/revoke';
 
 export interface SurfOAuthOptions {
   clientId: string;
