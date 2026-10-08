@@ -1355,7 +1355,9 @@ class _CustomFeedsAPI:
 
     def create(self, title: str, description: str = None,
                operators: Optional[List] = None,
-               theme: FeedTheme = None, image: str = None) -> dict:
+               theme: FeedTheme = None, image: str = None,
+               link_url: str = None, link_text: str = None,
+               share_image: str = None) -> dict:
         """Create a new custom feed.
 
         Args:
@@ -1365,6 +1367,9 @@ class _CustomFeedsAPI:
                 defining feed sources.
             theme: Optional FeedTheme to set the feed's visual appearance.
             image: Optional cover image URL (used for share cards / OG tags).
+            link_url: Optional link shown with the feed (<= 2048 chars).
+            link_text: Optional text for ``link_url`` (<= 255 chars).
+            share_image: Optional image URL for sharing the feed (<= 512 chars).
         """
         body: dict = {"title": title}
         if description:
@@ -1376,6 +1381,12 @@ class _CustomFeedsAPI:
             ]
         if image:
             body["image"] = image
+        if link_url:
+            body["link_url"] = link_url
+        if link_text:
+            body["link_text"] = link_text
+        if share_image:
+            body["share_image"] = share_image
         if theme:
             body["theme"] = theme.to_dict()
         return self._c._post("/custom", json=body)
