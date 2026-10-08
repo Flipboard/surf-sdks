@@ -939,7 +939,7 @@ class CustomFeedsAPI {
 
   list() { return this.c._get('/custom'); }
   get(feedId: string) { return this.c._get(`/custom/${feedId}`); }
-  create(body: { title: string; description?: string; operators?: unknown[]; image?: string; theme?: FeedTheme }) {
+  create(body: { title: string; description?: string; operators?: unknown[]; image?: string; link_url?: string; link_text?: string; share_image?: string; theme?: FeedTheme }) {
     const { theme, ...rest } = body;
     const payload: Record<string, unknown> = { ...rest };
     if (theme) payload.theme = theme;
