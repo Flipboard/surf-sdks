@@ -29,3 +29,6 @@ build/
 
 # Local env / secrets
 .env
+
+# Claude Code per-machine state: records approved commands verbatim, so it can embed secrets
+.claude/settings.local.json
