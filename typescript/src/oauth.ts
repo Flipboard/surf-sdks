@@ -3,7 +3,7 @@
  *
  * @example
  * ```ts
- * import { SurfOAuth } from '@surf/api/oauth';
+ * import { SurfOAuth } from '@surf/api';
  *
  * const oauth = new SurfOAuth({
  *   clientId: 'your-app-public-id',
