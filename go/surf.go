@@ -131,6 +131,12 @@ func NewClient(apiKey string, opts ...ClientOption) *Client {
 	for _, opt := range opts {
 		opt(c)
 	}
+	// Checked after the options run, since WithAccessToken is what supplies the other
+	// credential. Both set would silently pick one and could act as the wrong principal;
+	// neither set would send an empty key and fail every call with a confusing 401.
+	if (c.APIKey == "") == (c.AccessToken == "") {
+		panic("surf: pass exactly one of an API key or WithAccessToken")
+	}
 	c.Feeds = &FeedsAPI{c: c}
 	c.Search = &SearchAPI{c: c}
 	c.AI = &AIAPI{c: c}

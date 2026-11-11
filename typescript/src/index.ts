@@ -100,7 +100,7 @@ export class SurfRateLimitError extends SurfAPIError {
 
 export class SurfClient {
   private readonly apiKey?: string;
-  private readonly accessToken?: string;
+  private _accessToken?: string;
   private readonly baseUrl: string;
   private readonly devportalUrl: string;
   private readonly timeout: number;
@@ -134,7 +134,7 @@ export class SurfClient {
       );
     }
     this.apiKey = options.apiKey;
-    this.accessToken = options.accessToken;
+    this._accessToken = options.accessToken;
     this.baseUrl = (options.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, '');
     this.devportalUrl = (options.devportalUrl || DEFAULT_DEVPORTAL_URL).replace(/\/+$/, '');
     this.timeout = options.timeout ?? 30_000;
@@ -161,9 +161,31 @@ export class SurfClient {
 
   /** The auth header for this client: Bearer for an OAuth token, X-API-Key for an app key. */
   private authHeader(): Record<string, string> {
-    return this.accessToken
-      ? { Authorization: `Bearer ${this.accessToken}` }
+    return this._accessToken
+      ? { Authorization: `Bearer ${this._accessToken}` }
       : { 'X-API-Key': this.apiKey as string };
+  }
+
+  /**
+   * The OAuth access token in use, or undefined when authenticating with an app key.
+   *
+   * Assigning a refreshed token is enough to keep using the same client; the header is built
+   * per request, so there is no stale copy to resync.
+   *
+   * ```ts
+   * const fresh = await oauth.refreshToken(tokens.refresh_token);
+   * client.accessToken = fresh.access_token;
+   * ```
+   */
+  get accessToken(): string | undefined {
+    return this._accessToken;
+  }
+
+  set accessToken(token: string | undefined) {
+    if (!token) {
+      throw new Error('accessToken cannot be empty; construct a new client to switch to an apiKey');
+    }
+    this._accessToken = token;
   }
 
   /** @internal */
