@@ -3,7 +3,7 @@
 // Usage:
 //
 //	oauth := surf.NewOAuth("client-id", "https://yourapp.com/callback")
-//	url, state, verifier := oauth.GetAuthorizeURL("read:feeds write:statuses", "")
+//	url, state, verifier := oauth.GetAuthorizeURL("read write", "")
 //	// redirect user to url, save state + verifier
 //	tokens, err := oauth.ExchangeCode(code, verifier)
 //	// use tokens.AccessToken with surf.NewClient()

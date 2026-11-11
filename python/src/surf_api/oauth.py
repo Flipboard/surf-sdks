@@ -10,14 +10,12 @@ Usage (sync)::
     )
 
     # Step 1: Generate authorization URL
-    auth_url, state, verifier = oauth.get_authorize_url(
-        scope="read:feeds write:statuses"
-    )
+    auth_url, state, verifier = oauth.get_authorize_url(scope="read write")
     # Redirect the user to auth_url
 
     # Step 2: Exchange the code (after redirect back)
     tokens = oauth.exchange_code(code="AUTH_CODE", code_verifier=verifier)
-    # tokens = {"access_token": "surf_at_...", "refresh_token": "surf_rt_...", ...}
+    # tokens = {"access_token": "<jwt>", "refresh_token": "surf_rt_...", ...}
 
     # Step 3: Create a client with the access token
     from surf_api import SurfClient
@@ -118,8 +116,8 @@ class SurfOAuth:
             code_verifier: The PKCE code_verifier from get_authorize_url()
 
         Returns:
-            {"access_token": "surf_at_...", "refresh_token": "surf_rt_...",
-             "token_type": "Bearer", "expires_in": 3600, "scope": "..."}
+            {"access_token": "<jwt>", "refresh_token": "surf_rt_...",
+             "token_type": "bearer", "expires_in": 86400, "scope": "..."}
         """
         import requests
         resp = requests.post(self.token_url, json={
@@ -136,7 +134,7 @@ class SurfOAuth:
         """Use a refresh token to get a new access token.
 
         Returns:
-            {"access_token": "surf_at_...", "refresh_token": "surf_rt_...", ...}
+            {"access_token": "<jwt>", "refresh_token": "surf_rt_...", ...}
             Note: the refresh token rotates — the old one is invalidated.
         """
         import requests
