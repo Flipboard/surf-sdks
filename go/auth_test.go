@@ -2,6 +2,7 @@ package surf
 
 import (
 	"net/http"
+	"sync"
 	"testing"
 )
 
@@ -60,4 +61,39 @@ func newBlankRequest(t *testing.T) *http.Request {
 		t.Fatalf("building request: %v", err)
 	}
 	return req
+}
+
+// A refresh on a shared client must be safe against the requests reading it; run with -race.
+func TestSetAccessTokenIsSafeUnderConcurrentReads(t *testing.T) {
+	c := NewClient("", WithAccessToken("jwt-initial"))
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 200; j++ {
+				c.setAuth(newBlankRequest(t))
+			}
+		}()
+	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for j := 0; j < 200; j++ {
+			c.SetAccessToken("jwt-refreshed")
+		}
+	}()
+	wg.Wait()
+	if got := c.AccessToken(); got != "jwt-refreshed" {
+		t.Errorf("AccessToken() = %q, want the refreshed token", got)
+	}
+}
+
+func TestSetAccessTokenRejectsEmpty(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("expected a panic on an empty token")
+		}
+	}()
+	NewClient("", WithAccessToken("jwt")).SetAccessToken("")
 }

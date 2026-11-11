@@ -114,12 +114,22 @@ class AsyncSurfClient:
         self.diagnostics = _AsyncDiagnosticsAPI(self)
 
     def _apply_credential(self) -> None:
-        self._client.headers.pop("Authorization", None)
-        self._client.headers.pop("X-API-Key", None)
+        """Swap the auth header by replacing the mapping, not by editing it in place.
+
+        Editing in place leaves a window in which neither credential header is set, and a
+        request issued during it would go out unauthenticated. Rebinding the attribute is a
+        single assignment, so a concurrent request sees one complete mapping or the other.
+        """
+        headers = httpx.Headers(self._client.headers)
+        if "Authorization" in headers:
+            del headers["Authorization"]
+        if "X-API-Key" in headers:
+            del headers["X-API-Key"]
         if self._access_token:
-            self._client.headers["Authorization"] = f"Bearer {self._access_token}"
+            headers["Authorization"] = f"Bearer {self._access_token}"
         else:
-            self._client.headers["X-API-Key"] = self._api_key
+            headers["X-API-Key"] = self._api_key
+        self._client.headers = headers
 
     @property
     def access_token(self) -> Optional[str]:

@@ -11,7 +11,7 @@
 //	// Refresh tokens ROTATE: store fresh.RefreshToken for next time, or the following
 //	// refresh presents an invalidated one. Point the client at the new access token too.
 //	fresh, err := oauth.RefreshToken(tokens.RefreshToken)
-//	client.AccessToken = fresh.AccessToken
+//	client.SetAccessToken(fresh.AccessToken)
 //	tokens = fresh
 package surf
 
