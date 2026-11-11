@@ -11,7 +11,7 @@
  * });
  *
  * // Step 1: Generate authorization URL
- * const { url, state, codeVerifier } = oauth.getAuthorizeUrl({ scope: 'read write' });
+ * const { url, state, codeVerifier } = await oauth.getAuthorizeUrl({ scope: 'read write' });
  *
  * // Step 2: Exchange code after redirect
  * const tokens = await oauth.exchangeCode(code, codeVerifier);
