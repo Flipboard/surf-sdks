@@ -67,13 +67,19 @@ class AsyncSurfClient:
 
     def __init__(
         self,
-        api_key: str,
+        api_key: Optional[str] = None,
         base_url: str = DEFAULT_BASE_URL,
         timeout: float = 30.0,
         max_retries: int = 3,
         devportal_url: str = DEFAULT_DEVPORTAL_URL,
+        access_token: Optional[str] = None,
     ):
+        if bool(api_key) == bool(access_token):
+            raise ValueError(
+                "pass exactly one of api_key (surf_sk_...) or access_token (from the OAuth flow)"
+            )
         self.api_key = api_key
+        self.access_token = access_token
         self.base_url = base_url.rstrip("/")
         self.devportal_url = (devportal_url or DEFAULT_DEVPORTAL_URL).rstrip("/")
         self.timeout = timeout
@@ -83,7 +89,8 @@ class AsyncSurfClient:
         self._client = httpx.AsyncClient(
             base_url=f"{self.base_url}{API_PREFIX}",
             headers={
-                "X-API-Key": api_key,
+                **({"Authorization": f"Bearer {access_token}"} if access_token
+                   else {"X-API-Key": api_key}),
                 "Accept": "application/json",
                 "User-Agent": "surf-api-python-async/1.0.0",
             },

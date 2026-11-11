@@ -99,7 +99,8 @@ export class SurfRateLimitError extends SurfAPIError {
 // ==========================================================================
 
 export class SurfClient {
-  private readonly apiKey: string;
+  private readonly apiKey?: string;
+  private readonly accessToken?: string;
   private readonly baseUrl: string;
   private readonly devportalUrl: string;
   private readonly timeout: number;
@@ -127,7 +128,13 @@ export class SurfClient {
   public readonly diagnostics: DiagnosticsAPI;
 
   constructor(options: SurfClientOptions) {
+    if (!options.apiKey === !options.accessToken) {
+      throw new Error(
+        'pass exactly one of apiKey (surf_sk_...) or accessToken (from the OAuth flow)',
+      );
+    }
     this.apiKey = options.apiKey;
+    this.accessToken = options.accessToken;
     this.baseUrl = (options.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, '');
     this.devportalUrl = (options.devportalUrl || DEFAULT_DEVPORTAL_URL).replace(/\/+$/, '');
     this.timeout = options.timeout ?? 30_000;
@@ -150,6 +157,13 @@ export class SurfClient {
     this.media = new MediaAPI(this);
     this.longform = new LongformAPI(this);
     this.diagnostics = new DiagnosticsAPI(this);
+  }
+
+  /** The auth header for this client: Bearer for an OAuth token, X-API-Key for an app key. */
+  private authHeader(): Record<string, string> {
+    return this.accessToken
+      ? { Authorization: `Bearer ${this.accessToken}` }
+      : { 'X-API-Key': this.apiKey as string };
   }
 
   /** @internal */
@@ -177,7 +191,7 @@ export class SurfClient {
     }
 
     const headers: Record<string, string> = {
-      'X-API-Key': this.apiKey,
+      ...this.authHeader(),
       'User-Agent': 'surf-api-ts/1.3.0',
     };
     let body: string | undefined;
@@ -1164,7 +1178,7 @@ class MediaAPI {
     const url = `${(this.c as any).baseUrl}${API_PREFIX}/media/upload`;
     const resp = await ((this.c as any)._fetch as typeof fetch)(url, {
       method: 'POST',
-      headers: { 'X-API-Key': (this.c as any).apiKey },
+      headers: { ...(this.c as any).authHeader() },
       body: form,
     });
     if (!resp.ok) throw new SurfAPIError(resp.statusText, resp.status);
@@ -1185,7 +1199,7 @@ class MediaAPI {
     if (opts?.service) url += `?service=${encodeURIComponent(opts.service)}`;
     const resp = await ((this.c as any)._fetch as typeof fetch)(url, {
       method: 'POST',
-      headers: { 'X-API-Key': (this.c as any).apiKey },
+      headers: { ...(this.c as any).authHeader() },
       body: form,
     });
     if (!resp.ok) throw new SurfAPIError(resp.statusText, resp.status);
@@ -1197,7 +1211,7 @@ class MediaAPI {
     let url = `${(this.c as any).baseUrl}${API_PREFIX}/media/attachments/${encodeURIComponent(id)}`;
     if (service) url += `?service=${encodeURIComponent(service)}`;
     const resp = await ((this.c as any)._fetch as typeof fetch)(url, {
-      headers: { 'X-API-Key': (this.c as any).apiKey, Accept: 'application/json' },
+      headers: { ...(this.c as any).authHeader(), Accept: 'application/json' },
     });
     if (!resp.ok) throw new SurfAPIError(resp.statusText, resp.status);
     const text = await resp.text();

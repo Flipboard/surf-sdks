@@ -70,13 +70,31 @@ class SurfClient:
 
     def __init__(
         self,
-        api_key: str,
+        api_key: Optional[str] = None,
         base_url: str = DEFAULT_BASE_URL,
         timeout: int = 30,
         max_retries: int = 3,
         devportal_url: str = DEFAULT_DEVPORTAL_URL,
+        access_token: Optional[str] = None,
     ):
+        """Create a client authenticated as your app or as a user.
+
+        Pass ``api_key`` (``surf_sk_live_...``/``surf_sk_test_...``) to act as your own
+        developer account, or ``access_token`` from the OAuth flow to act as the user who
+        authorized your app. They use different headers and are not interchangeable: an
+        OAuth access token is a JWT and is sent as ``Authorization: Bearer``, while
+        ``X-API-Key`` is validated as an app key, so passing a JWT as ``api_key`` returns 401.
+
+        Args:
+            api_key: App API key, for server-to-server calls made as yourself
+            access_token: OAuth access token, for calls made on behalf of a user
+        """
+        if bool(api_key) == bool(access_token):
+            raise ValueError(
+                "pass exactly one of api_key (surf_sk_...) or access_token (from the OAuth flow)"
+            )
         self.api_key = api_key
+        self.access_token = access_token
         self.base_url = base_url.rstrip("/")
         self.devportal_url = (devportal_url or DEFAULT_DEVPORTAL_URL).rstrip("/")
         self.timeout = timeout
@@ -85,7 +103,8 @@ class SurfClient:
 
         self._session = requests.Session()
         self._session.headers.update({
-            "X-API-Key": api_key,
+            **({"Authorization": f"Bearer {access_token}"} if access_token
+               else {"X-API-Key": api_key}),
             "Accept": "application/json",
             "User-Agent": "surf-api-python/1.0.0",
         })

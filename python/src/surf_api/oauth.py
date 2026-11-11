@@ -17,9 +17,9 @@ Usage (sync)::
     tokens = oauth.exchange_code(code="AUTH_CODE", code_verifier=verifier)
     # tokens = {"access_token": "<jwt>", "refresh_token": "surf_rt_...", ...}
 
-    # Step 3: Create a client with the access token
+    # Step 3: Create a client that acts as the user who authorized your app
     from surf_api import SurfClient
-    client = SurfClient(tokens["access_token"])
+    client = SurfClient(access_token=tokens["access_token"])
 
     # Step 4: Refresh when expired
     new_tokens = oauth.refresh_token(tokens["refresh_token"])

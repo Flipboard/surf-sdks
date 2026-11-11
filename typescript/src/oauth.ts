@@ -16,8 +16,8 @@
  * // Step 2: Exchange code after redirect
  * const tokens = await oauth.exchangeCode(code, codeVerifier);
  *
- * // Step 3: Use the access token
- * const client = new SurfClient({ apiKey: tokens.access_token });
+ * // Step 3: Act as the user who authorized your app
+ * const client = new SurfClient({ accessToken: tokens.access_token });
  *
  * // Step 4: Refresh when expired
  * const newTokens = await oauth.refreshToken(tokens.refresh_token);
