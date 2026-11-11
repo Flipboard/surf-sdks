@@ -21,8 +21,10 @@ Usage (sync)::
     from surf_api import SurfClient
     client = SurfClient(access_token=tokens["access_token"])
 
-    # Step 4: Refresh when expired
+    # Step 4: Refresh when expired. Refresh tokens ROTATE: store the new refresh token,
+    # or the next refresh presents an invalidated one and fails with invalid_grant.
     new_tokens = oauth.refresh_token(tokens["refresh_token"])
+    client.access_token = new_tokens["access_token"]
 
 Usage (async)::
 

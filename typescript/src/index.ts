@@ -175,6 +175,7 @@ export class SurfClient {
    * ```ts
    * const fresh = await oauth.refreshToken(tokens.refresh_token);
    * client.accessToken = fresh.access_token;
+   * tokens = fresh; // refresh tokens rotate: keep the new one or the next refresh fails
    * ```
    */
   get accessToken(): string | undefined {
@@ -212,17 +213,16 @@ export class SurfClient {
       if (s) url += `?${s}`;
     }
 
-    const headers: Record<string, string> = {
-      ...this.authHeader(),
+    const baseHeaders: Record<string, string> = {
       'User-Agent': 'surf-api-ts/1.3.0',
     };
     let body: string | undefined;
     if (opts?.json !== undefined) {
-      headers['Content-Type'] = 'application/json';
+      baseHeaders['Content-Type'] = 'application/json';
       body = JSON.stringify(opts.json);
     }
     if (!opts?.raw) {
-      headers['Accept'] = 'application/json';
+      baseHeaders['Accept'] = 'application/json';
     }
 
     const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
@@ -233,9 +233,11 @@ export class SurfClient {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), this.timeout);
       try {
+        // Rebuilt per attempt: a backoff can span a token refresh, and a header captured
+        // before the loop would retry with the credential that has since been replaced.
         const resp = await this._fetch(url, {
           method,
-          headers,
+          headers: { ...baseHeaders, ...this.authHeader() },
           body,
           signal: controller.signal,
         });

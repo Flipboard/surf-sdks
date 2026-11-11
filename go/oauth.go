@@ -7,6 +7,8 @@
 //	// redirect user to url, save state + verifier
 //	tokens, err := oauth.ExchangeCode(code, verifier)
 //	client := surf.NewClient("", surf.WithAccessToken(tokens.AccessToken))
+//	// Refresh tokens ROTATE: keep fresh.RefreshToken, or the next refresh fails.
+//	fresh, err := oauth.RefreshToken(tokens.RefreshToken)
 package surf
 
 import (

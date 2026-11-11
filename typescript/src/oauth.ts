@@ -19,8 +19,10 @@
  * // Step 3: Act as the user who authorized your app
  * const client = new SurfClient({ accessToken: tokens.access_token });
  *
- * // Step 4: Refresh when expired
+ * // Step 4: Refresh when expired. Refresh tokens ROTATE: store newTokens.refresh_token,
+ * // or the next refresh presents an invalidated one and fails with invalid_grant.
  * const newTokens = await oauth.refreshToken(tokens.refresh_token);
+ * client.accessToken = newTokens.access_token;
  * ```
  */
 
