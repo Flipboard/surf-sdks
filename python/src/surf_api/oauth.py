@@ -86,7 +86,10 @@ class SurfOAuth:
         """Build the authorization URL with PKCE.
 
         Args:
-            scope: Space-separated scopes (e.g., "read:feeds write:statuses")
+            scope: Space-separated scopes, e.g. "read write". Ask for the coarse
+                grants ("read", "write", "use:ai"); "write" already satisfies the
+                finer "write:*" requirements listed on individual endpoints, and
+                requesting one of those at authorize time is rejected outright.
             state: Optional CSRF state value (auto-generated if None)
 
         Returns:
@@ -118,6 +121,10 @@ class SurfOAuth:
         Returns:
             {"access_token": "<jwt>", "refresh_token": "surf_rt_...",
              "token_type": "bearer", "expires_in": 86400, "scope": "..."}
+
+            The server sends token_type lowercase. It is the type, not header text:
+            send the token as `Authorization: Bearer <access_token>`, with the
+            capitalized scheme name, rather than echoing this value.
         """
         import requests
         resp = requests.post(self.token_url, json={
