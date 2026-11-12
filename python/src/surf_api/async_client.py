@@ -67,13 +67,19 @@ class AsyncSurfClient:
 
     def __init__(
         self,
-        api_key: str,
+        api_key: Optional[str] = None,
         base_url: str = DEFAULT_BASE_URL,
         timeout: float = 30.0,
         max_retries: int = 3,
         devportal_url: str = DEFAULT_DEVPORTAL_URL,
+        access_token: Optional[str] = None,
     ):
-        self.api_key = api_key
+        if bool(api_key) == bool(access_token):
+            raise ValueError(
+                "pass exactly one of api_key (surf_sk_...) or access_token (from the OAuth flow)"
+            )
+        self._api_key = api_key
+        self._access_token = access_token
         self.base_url = base_url.rstrip("/")
         self.devportal_url = (devportal_url or DEFAULT_DEVPORTAL_URL).rstrip("/")
         self.timeout = timeout
@@ -83,12 +89,12 @@ class AsyncSurfClient:
         self._client = httpx.AsyncClient(
             base_url=f"{self.base_url}{API_PREFIX}",
             headers={
-                "X-API-Key": api_key,
                 "Accept": "application/json",
                 "User-Agent": "surf-api-python-async/1.0.0",
             },
             timeout=timeout,
         )
+        self._apply_credential()
 
         # Sub-clients
         self.feeds = _AsyncFeedsAPI(self)
@@ -106,6 +112,54 @@ class AsyncSurfClient:
         self.media = _AsyncMediaAPI(self)
         self.longform = _AsyncLongformAPI(self)
         self.diagnostics = _AsyncDiagnosticsAPI(self)
+
+    def _apply_credential(self) -> None:
+        """Swap the auth header by replacing the mapping, not by editing it in place.
+
+        Editing in place leaves a window in which neither credential header is set, and a
+        request issued during it would go out unauthenticated. Rebinding the attribute is a
+        single assignment, so a concurrent request sees one complete mapping or the other.
+        """
+        headers = httpx.Headers(self._client.headers)
+        if "Authorization" in headers:
+            del headers["Authorization"]
+        if "X-API-Key" in headers:
+            del headers["X-API-Key"]
+        if self._access_token:
+            headers["Authorization"] = f"Bearer {self._access_token}"
+        else:
+            headers["X-API-Key"] = self._api_key
+        self._client.headers = headers
+
+    @property
+    def access_token(self) -> Optional[str]:
+        """The OAuth access token in use, or None when authenticating with an app key.
+
+        Assigning a refreshed token updates the request header too, so a client created from
+        the OAuth flow survives a refresh rather than having to be rebuilt.
+        """
+        return self._access_token
+
+    @access_token.setter
+    def access_token(self, token: str) -> None:
+        if not token:
+            raise ValueError("access_token cannot be empty; create a new client to switch to an api_key")
+        self._access_token = token
+        self._api_key = None
+        self._apply_credential()
+
+    @property
+    def api_key(self) -> Optional[str]:
+        """The app API key in use, or None when authenticating with an OAuth access token."""
+        return self._api_key
+
+    @api_key.setter
+    def api_key(self, key: str) -> None:
+        if not key:
+            raise ValueError("api_key cannot be empty; create a new client to switch to an access_token")
+        self._api_key = key
+        self._access_token = None
+        self._apply_credential()
 
     async def __aenter__(self):
         return self

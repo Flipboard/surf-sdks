@@ -3,7 +3,7 @@
  *
  * @example
  * ```ts
- * import { SurfOAuth } from '@surf/api/oauth';
+ * import { SurfOAuth } from '@surf/api';
  *
  * const oauth = new SurfOAuth({
  *   clientId: 'your-app-public-id',
@@ -11,16 +11,18 @@
  * });
  *
  * // Step 1: Generate authorization URL
- * const { url, state, codeVerifier } = oauth.getAuthorizeUrl({ scope: 'read:feeds write:statuses' });
+ * const { url, state, codeVerifier } = await oauth.getAuthorizeUrl({ scope: 'read write' });
  *
  * // Step 2: Exchange code after redirect
  * const tokens = await oauth.exchangeCode(code, codeVerifier);
  *
- * // Step 3: Use the access token
- * const client = new SurfClient({ apiKey: tokens.access_token });
+ * // Step 3: Act as the user who authorized your app
+ * const client = new SurfClient({ accessToken: tokens.access_token });
  *
- * // Step 4: Refresh when expired
+ * // Step 4: Refresh when expired. Refresh tokens ROTATE: store newTokens.refresh_token,
+ * // or the next refresh presents an invalidated one and fails with invalid_grant.
  * const newTokens = await oauth.refreshToken(tokens.refresh_token);
+ * client.accessToken = newTokens.access_token;
  * ```
  */
 

@@ -10,21 +10,21 @@ Usage (sync)::
     )
 
     # Step 1: Generate authorization URL
-    auth_url, state, verifier = oauth.get_authorize_url(
-        scope="read:feeds write:statuses"
-    )
+    auth_url, state, verifier = oauth.get_authorize_url(scope="read write")
     # Redirect the user to auth_url
 
     # Step 2: Exchange the code (after redirect back)
     tokens = oauth.exchange_code(code="AUTH_CODE", code_verifier=verifier)
-    # tokens = {"access_token": "surf_at_...", "refresh_token": "surf_rt_...", ...}
+    # tokens = {"access_token": "<jwt>", "refresh_token": "surf_rt_...", ...}
 
-    # Step 3: Create a client with the access token
+    # Step 3: Create a client that acts as the user who authorized your app
     from surf_api import SurfClient
-    client = SurfClient(tokens["access_token"])
+    client = SurfClient(access_token=tokens["access_token"])
 
-    # Step 4: Refresh when expired
+    # Step 4: Refresh when expired. Refresh tokens ROTATE: store the new refresh token,
+    # or the next refresh presents an invalidated one and fails with invalid_grant.
     new_tokens = oauth.refresh_token(tokens["refresh_token"])
+    client.access_token = new_tokens["access_token"]
 
 Usage (async)::
 
@@ -88,7 +88,10 @@ class SurfOAuth:
         """Build the authorization URL with PKCE.
 
         Args:
-            scope: Space-separated scopes (e.g., "read:feeds write:statuses")
+            scope: Space-separated scopes, e.g. "read write". Ask for the coarse
+                grants ("read", "write", "use:ai"); "write" already satisfies the
+                finer "write:*" requirements listed on individual endpoints, and
+                requesting one of those at authorize time is rejected outright.
             state: Optional CSRF state value (auto-generated if None)
 
         Returns:
@@ -118,8 +121,12 @@ class SurfOAuth:
             code_verifier: The PKCE code_verifier from get_authorize_url()
 
         Returns:
-            {"access_token": "surf_at_...", "refresh_token": "surf_rt_...",
-             "token_type": "Bearer", "expires_in": 3600, "scope": "..."}
+            {"access_token": "<jwt>", "refresh_token": "surf_rt_...",
+             "token_type": "bearer", "expires_in": 86400, "scope": "..."}
+
+            The server sends token_type lowercase. It is the type, not header text:
+            send the token as `Authorization: Bearer <access_token>`, with the
+            capitalized scheme name, rather than echoing this value.
         """
         import requests
         resp = requests.post(self.token_url, json={
@@ -136,7 +143,7 @@ class SurfOAuth:
         """Use a refresh token to get a new access token.
 
         Returns:
-            {"access_token": "surf_at_...", "refresh_token": "surf_rt_...", ...}
+            {"access_token": "<jwt>", "refresh_token": "surf_rt_...", ...}
             Note: the refresh token rotates — the old one is invalidated.
         """
         import requests

@@ -3,10 +3,16 @@
 // Usage:
 //
 //	oauth := surf.NewOAuth("client-id", "https://yourapp.com/callback")
-//	url, state, verifier := oauth.GetAuthorizeURL("read:feeds write:statuses", "")
+//	url, state, verifier := oauth.GetAuthorizeURL("read write", "")
 //	// redirect user to url, save state + verifier
 //	tokens, err := oauth.ExchangeCode(code, verifier)
-//	// use tokens.AccessToken with surf.NewClient()
+//	client := surf.NewClient("", surf.WithAccessToken(tokens.AccessToken))
+//
+//	// Refresh tokens ROTATE: store fresh.RefreshToken for next time, or the following
+//	// refresh presents an invalidated one. Point the client at the new access token too.
+//	fresh, err := oauth.RefreshToken(tokens.RefreshToken)
+//	client.SetAccessToken(fresh.AccessToken)
+//	tokens = fresh
 package surf
 
 import (

@@ -7,8 +7,17 @@ export interface RateLimitInfo {
 
 /** Options for creating a SurfClient. */
 export interface SurfClientOptions {
-  /** API token (surf_sk_live_... or surf_sk_test_...) */
-  apiKey: string;
+  /**
+   * App API token (surf_sk_live_... or surf_sk_test_...), for calls made as your own
+   * developer account. Pass this or `accessToken`, not both.
+   */
+  apiKey?: string;
+  /**
+   * OAuth access token, for calls made on behalf of the user who authorized your app.
+   * It is a JWT and is sent as `Authorization: Bearer`; `X-API-Key` is validated as an
+   * app key, so passing a JWT as `apiKey` returns 401.
+   */
+  accessToken?: string;
   /** Base URL (default: https://api.surf.social) */
   baseUrl?: string;
   /** Developer-portal base URL for diagnostics/debug bundles (default: https://surf.social/devportal/v1) */

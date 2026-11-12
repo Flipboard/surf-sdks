@@ -99,7 +99,8 @@ export class SurfRateLimitError extends SurfAPIError {
 // ==========================================================================
 
 export class SurfClient {
-  private readonly apiKey: string;
+  private readonly apiKey?: string;
+  private _accessToken?: string;
   private readonly baseUrl: string;
   private readonly devportalUrl: string;
   private readonly timeout: number;
@@ -127,7 +128,13 @@ export class SurfClient {
   public readonly diagnostics: DiagnosticsAPI;
 
   constructor(options: SurfClientOptions) {
+    if (!options.apiKey === !options.accessToken) {
+      throw new Error(
+        'pass exactly one of apiKey (surf_sk_...) or accessToken (from the OAuth flow)',
+      );
+    }
     this.apiKey = options.apiKey;
+    this._accessToken = options.accessToken;
     this.baseUrl = (options.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, '');
     this.devportalUrl = (options.devportalUrl || DEFAULT_DEVPORTAL_URL).replace(/\/+$/, '');
     this.timeout = options.timeout ?? 30_000;
@@ -150,6 +157,36 @@ export class SurfClient {
     this.media = new MediaAPI(this);
     this.longform = new LongformAPI(this);
     this.diagnostics = new DiagnosticsAPI(this);
+  }
+
+  /** The auth header for this client: Bearer for an OAuth token, X-API-Key for an app key. */
+  private authHeader(): Record<string, string> {
+    return this._accessToken
+      ? { Authorization: `Bearer ${this._accessToken}` }
+      : { 'X-API-Key': this.apiKey as string };
+  }
+
+  /**
+   * The OAuth access token in use, or undefined when authenticating with an app key.
+   *
+   * Assigning a refreshed token is enough to keep using the same client; the header is built
+   * per request, so there is no stale copy to resync.
+   *
+   * ```ts
+   * const fresh = await oauth.refreshToken(tokens.refresh_token);
+   * client.accessToken = fresh.access_token;
+   * tokens = fresh; // refresh tokens rotate: keep the new one or the next refresh fails
+   * ```
+   */
+  get accessToken(): string | undefined {
+    return this._accessToken;
+  }
+
+  set accessToken(token: string | undefined) {
+    if (!token) {
+      throw new Error('accessToken cannot be empty; construct a new client to switch to an apiKey');
+    }
+    this._accessToken = token;
   }
 
   /** @internal */
@@ -176,17 +213,16 @@ export class SurfClient {
       if (s) url += `?${s}`;
     }
 
-    const headers: Record<string, string> = {
-      'X-API-Key': this.apiKey,
+    const baseHeaders: Record<string, string> = {
       'User-Agent': 'surf-api-ts/1.3.0',
     };
     let body: string | undefined;
     if (opts?.json !== undefined) {
-      headers['Content-Type'] = 'application/json';
+      baseHeaders['Content-Type'] = 'application/json';
       body = JSON.stringify(opts.json);
     }
     if (!opts?.raw) {
-      headers['Accept'] = 'application/json';
+      baseHeaders['Accept'] = 'application/json';
     }
 
     const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
@@ -197,9 +233,11 @@ export class SurfClient {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), this.timeout);
       try {
+        // Rebuilt per attempt: a backoff can span a token refresh, and a header captured
+        // before the loop would retry with the credential that has since been replaced.
         const resp = await this._fetch(url, {
           method,
-          headers,
+          headers: { ...baseHeaders, ...this.authHeader() },
           body,
           signal: controller.signal,
         });
@@ -1164,7 +1202,7 @@ class MediaAPI {
     const url = `${(this.c as any).baseUrl}${API_PREFIX}/media/upload`;
     const resp = await ((this.c as any)._fetch as typeof fetch)(url, {
       method: 'POST',
-      headers: { 'X-API-Key': (this.c as any).apiKey },
+      headers: { ...(this.c as any).authHeader() },
       body: form,
     });
     if (!resp.ok) throw new SurfAPIError(resp.statusText, resp.status);
@@ -1185,7 +1223,7 @@ class MediaAPI {
     if (opts?.service) url += `?service=${encodeURIComponent(opts.service)}`;
     const resp = await ((this.c as any)._fetch as typeof fetch)(url, {
       method: 'POST',
-      headers: { 'X-API-Key': (this.c as any).apiKey },
+      headers: { ...(this.c as any).authHeader() },
       body: form,
     });
     if (!resp.ok) throw new SurfAPIError(resp.statusText, resp.status);
@@ -1197,7 +1235,7 @@ class MediaAPI {
     let url = `${(this.c as any).baseUrl}${API_PREFIX}/media/attachments/${encodeURIComponent(id)}`;
     if (service) url += `?service=${encodeURIComponent(service)}`;
     const resp = await ((this.c as any)._fetch as typeof fetch)(url, {
-      headers: { 'X-API-Key': (this.c as any).apiKey, Accept: 'application/json' },
+      headers: { ...(this.c as any).authHeader(), Accept: 'application/json' },
     });
     if (!resp.ok) throw new SurfAPIError(resp.statusText, resp.status);
     const text = await resp.text();

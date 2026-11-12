@@ -11,7 +11,6 @@
 package surf
 
 import (
-	"mime/multipart"
 	"bytes"
 	"crypto/sha1"
 	"encoding/hex"
@@ -19,10 +18,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -35,8 +36,18 @@ const (
 
 // Client is the Surf API client.
 type Client struct {
-	APIKey  string
-	BaseURL string
+	// APIKey is an app token (surf_sk_live_.../surf_sk_test_...), sent as X-API-Key, for
+	// calls made as your own developer account. Set AccessToken instead to act as a user.
+	APIKey string
+	// accessToken is an OAuth access token, sent as Authorization: Bearer, for calls made
+	// on behalf of the user who authorized your app. It is a JWT; X-API-Key is validated
+	// as an app key, so putting a JWT in APIKey returns 401. Set it with WithAccessToken at
+	// construction and SetAccessToken afterwards; it is unexported because refreshing one
+	// on a shared client races with the requests reading it, and the mutex below is what
+	// makes that safe.
+	accessToken string
+	tokenMu     sync.RWMutex
+	BaseURL     string
 	// DevportalURL is the base URL for developer-portal endpoints (diagnostics),
 	// which live on a different host than the data API. Defaults to
 	// DefaultDevportalURL; override with WithDevportalURL.
@@ -89,6 +100,42 @@ func WithDevportalURL(u string) ClientOption {
 	}
 }
 
+// WithAccessToken authenticates as the user who granted an OAuth access token, instead of
+// as the developer account behind an API key. Pass an empty apiKey to NewClient when using it.
+func WithAccessToken(token string) ClientOption {
+	return func(c *Client) {
+		c.accessToken = token
+	}
+}
+
+// SetAccessToken swaps in a refreshed OAuth access token. Safe to call while requests are in
+// flight: every request reads one guarded snapshot, so a refresh cannot be observed half-applied.
+func (c *Client) SetAccessToken(token string) {
+	if token == "" {
+		panic("surf: access token cannot be empty; build a new client to switch to an API key")
+	}
+	c.tokenMu.Lock()
+	defer c.tokenMu.Unlock()
+	c.accessToken = token
+}
+
+// AccessToken returns the OAuth access token in use, or "" when authenticating with an API key.
+func (c *Client) AccessToken() string {
+	c.tokenMu.RLock()
+	defer c.tokenMu.RUnlock()
+	return c.accessToken
+}
+
+// setAuth applies whichever credential this client holds, from a single snapshot so a
+// concurrent SetAccessToken cannot be read half-applied.
+func (c *Client) setAuth(req *http.Request) {
+	if token := c.AccessToken(); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+		return
+	}
+	req.Header.Set("X-API-Key", c.APIKey)
+}
+
 // RateLimitInfo holds rate limit data from response headers.
 type RateLimitInfo struct {
 	Limit     int
@@ -107,6 +154,12 @@ func NewClient(apiKey string, opts ...ClientOption) *Client {
 	}
 	for _, opt := range opts {
 		opt(c)
+	}
+	// Checked after the options run, since WithAccessToken is what supplies the other
+	// credential. Both set would silently pick one and could act as the wrong principal;
+	// neither set would send an empty key and fail every call with a confusing 401.
+	if (c.APIKey == "") == (c.accessToken == "") {
+		panic("surf: pass exactly one of an API key or WithAccessToken")
 	}
 	c.Feeds = &FeedsAPI{c: c}
 	c.Search = &SearchAPI{c: c}
@@ -171,7 +224,7 @@ func (c *Client) do(method, path string, params url.Values, body interface{}) ([
 		if err != nil {
 			return nil, err
 		}
-		req.Header.Set("X-API-Key", c.APIKey)
+		c.setAuth(req)
 		req.Header.Set("User-Agent", userAgent)
 		req.Header.Set("Accept", "application/json")
 		if bodyBytes != nil {
@@ -259,7 +312,7 @@ func (c *Client) doStatus(method, path string, params url.Values, body interface
 	if err != nil {
 		return nil, 0, err
 	}
-	req.Header.Set("X-API-Key", c.APIKey)
+	c.setAuth(req)
 	req.Header.Set("User-Agent", userAgent)
 	req.Header.Set("Accept", "application/json")
 	if body != nil {
@@ -303,7 +356,7 @@ func (c *Client) doMultipart(path string, params url.Values, fields map[string]s
 		_ = pr.Close()
 		return nil, 0, err
 	}
-	req.Header.Set("X-API-Key", c.APIKey)
+	c.setAuth(req)
 	req.Header.Set("User-Agent", userAgent)
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Content-Type", w.FormDataContentType())
@@ -394,7 +447,7 @@ func (c *Client) doAbsolute(method, u string, body interface{}) (json.RawMessage
 		if err != nil {
 			return nil, err
 		}
-		req.Header.Set("X-API-Key", c.APIKey)
+		c.setAuth(req)
 		req.Header.Set("User-Agent", userAgent)
 		req.Header.Set("Accept", "application/json")
 		if bodyBytes != nil {
